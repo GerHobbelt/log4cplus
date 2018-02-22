@@ -3,7 +3,7 @@
 Short Description
 =================
 
-[log4cplus] is a simple to use C++ logging API providing thread--safe,
+[log4cplus] is a simple to use C++11 logging API providing thread--safe,
 flexible, and arbitrarily granular control over log management and
 configuration.  It is modeled after the Java log4j API.
 
@@ -16,9 +16,10 @@ Latest Project Information
 The latest up-to-date information for this project can be found at
 [log4cplus] SourceForge project pages or [log4cplus wiki][4] on
 SourceForge.  Please submit bugs, patches, feature requests, etc.,
-there.
+there, or on [GitHub][13].
 
 [4]: https://sourceforge.net/p/log4cplus/wiki/Home/
+[13]: https://github.com/log4cplus/log4cplus
 
 
 Mission statement
@@ -35,34 +36,43 @@ from log4net, log4cxx, log4cpp).
 Platform support
 ================
 
-Log4cplus has been ported to and tested on the following platforms:
+[log4cplus] version 2.0 and beyond require C++11. [log4cplus] has been
+ported to and tested on the following platforms:
 
-- Linux/AMD64 with 4.8.1 (Ubuntu/Linaro 4.8.1-10ubuntu8)
-- Linux/AMD64 with Sun C++ 5.12 Linux_i386 2011/11/16
-- Linux/AMD64 with Clang version 3.2-1~exp9ubuntu1
-  (tags/RELEASE_32/final) (based on LLVM 3.2)
-- Linux/AMD64 with Intel(R) C++ Intel(R) 64 Compiler XE for
-  applications running on Intel(R) 64, Version 12.1 Build 20120410
-- FreeBSD/AMD64 with GCC 3.4.6, 4.2.1 and 4.3.3
-- Windows 7 with MS Visual Studio 2010 and 2012
-- OpenSolaris 5.11/i386 with Sun C++ 5.10 SunOS_i386 128229-02
-  2009/09/21, with `-library=stlport4`
-- Solaris 5.10/Sparc with Sun C++ 5.8 2005/10/13, with
-  `-library=stlport4` and with `-library=Cstd`.
-- Solaris 5.10/Sparc with GCC 3.4.3 (csl-sol210-3_4-branch+sol_rpath)
-- NetBSD 6.0/AMD64 with GCC 4.5.3 (NetBSD nb2 20110806)
-- OpenBSD 5.2/AMD64 with GCC 4.2.1 20070719
-- MacOS X 10.8 with GCC 4.2.1 (Apple Inc. build 5664)
-- MacOS X 11.4.2 with GCC 4.2.1 (Based on Apple Inc. build 5658) (LLVM
-  build 2336.11.00)
-- HP-UX B.11.11 with HP ANSI C++ B3910B A.03.80
-  (hppa2.0w-hp-hpux11.11)
-- Haiku R1 Alpha 4.1 with GCC 4.6.3
-- AIX 5.3 with IBM XL C/C++ for AIX, V11.1 (5724-X13)
+  - Linux/AMD64 with GCC version 6.2.0 20161005 (Ubuntu 6.2.0-5ubuntu12)
+  - Linux/AMD64 with Clang version 3.8.1-12ubuntu1 (tags/RELEASE_381/final)
+  - Windows/AMD64 with GCC version 4.8.2 (x86_64-posix-seh-rev3, Built by
+    MinGW-W64 project) using CMake build system
+  - Windows/AMD64 with GCC version 4.9.2 (tdm64-1) using CMake build system
+  - Windows 7 with MS Visual Studio 2015
+  - OpenBSD 5.6/AMD64 with GCC version 4.9.0
+  - FreeBSD 10.1/i386 with Clang version 3.4.1 (tags/RELEASE_34/dot1-final 208032)
+  - NetBSD 6.1.5/AMD64 with GCC version 4.9.1
+  - DragonflyBSD 4.0.1/AMD64 with GCC version 4.9.3 20141126 (prerelease)
+    (FreeBSD Ports Collection)
+  - OpenIndiana Hipster 2016.10 with GCC version 4.9.4
 
 The testing on the above listed platforms has been done at some point
 in time with some version of source. Continuous testing is done only
 on Linux platform offered by [Travis CI][11] service.
+
+The oldest Windows version that is supported by 2.x releases is Windows Vista.
+
+The following platforms were supported by the 1.x series of [log4cplus]. They
+either do not have a reasonable C++11 capable compiler or have not been checked
+with [log4cplus] 2.x, yet:
+
+  - Minix 3.3.0/i386 with Clang version 3.4 (branches/release_34) with
+    `--disable-threads`
+  - Linux/AMD64 with Intel Parallel Studio XE 2015, ICPC version 15.0.1
+  - OpenSolaris with `-library=stlport4`
+  - Solaris with `-library=stlport4` and with `-library=Cstd`.
+  - Solaris 5.10/Sparc
+  - MacOS X 10.8
+  - MacOS X 11.4.2
+  - HP-UX (hppa2.0w-hp-hpux11.11)
+  - Haiku R1 Alpha 4.1
+  - AIX 5.3 with IBM XL C/C++ for AIX
 
 
 Configure script options
@@ -130,6 +140,14 @@ help with configuration by supplying additional flags to the
 Linux.  See one of the later note for details.
 
 
+`--with-wchar_t-support`
+------------------------
+
+This option is enabled by default.  When enabled, additional binaries will be
+built, marked with `U` suffix in file name and compiled with `-DUNICODE=1`
+flag. In effect, these binaries assume that `log4cplus::tchar` is `wchar_t`.
+
+
 `--with-working-locale`
 -----------------------
 
@@ -177,6 +195,14 @@ separate shared library (liblog4cplusqt4debugappender) that implements
 `Qt4DebugAppender`.  It requires Qt4 and pkg-config to be installed.
 
 
+`--enable-unit-tests`
+---------------------
+
+This option is disabled by default.  It enables compilation of unit tests along
+their units.  These unit tests then can be executed through `unit_tests` test
+executable that is built during compilation.
+
+
 Notes
 =====
 
@@ -188,13 +214,8 @@ autotools based build system or using CMake build system. The
 autotools based build system is considered to be primary for
 Unix--like platforms.
 
-On Windows, the primary build system is Visual Studio 2010 solution
-and projects (`msvc10/log4cplus.sln`). This solution and associated
-project files should update just fine to Visual Studio 2012 out of the
-box. See also `scripts/msvc10_to_msvc11.cmd` and
-`scripts/msvc10_to_msvc12.cmd` helper scripts that create
-`msvc11/log4cplus.sln` and `msvc12/log4cplus.sln` respectively when
-invoked on `msvc10/log4cplus.sln` from source root directory.
+On Windows, the primary build system is Visual Studio 2015 solution
+and projects (`msvc14/log4cplus.sln`).
 
 MinGW is supported by autotools based build system. CMake build system
 is supported as well and it should be used to compile [log4cplus] with
@@ -202,17 +223,15 @@ older versions of Visual Studio or with less common compiler suites
 (e.g., Embarcadero, Code::Blocks, etc.).
 
 
-Cygwin/MinGW
-------------
+Cygwin
+------
 
-Some version of GCC (3.4.x and probably some of 4.x series too) on
-Windows (both MinGW and Cygwin) produces lots of warnings of the form:
+Cygwin 2.5.x has a problem[^pr64697] linking binaries that use language level
+thread-local storage and share thread-local variables across translation
+units. To avoid the issue language level thread-local storage is not used on
+Cygwin and traditional POSIX thread-local storage is used instead.
 
-    warning: inline function 'void foo()' is declared as dllimport: attribute ignored
-
-This can be worked around by adding `-Wno-attributes` option to GCC
-command.  Unfortunately, not all affected version of GCC have this
-option.
+[^pr64697]: <https://gcc.gnu.org/bugzilla/show_bug.cgi?id=64697>
 
 
 MinGW and MSVCRT version
@@ -227,6 +246,43 @@ Microsoft's secure functions by defining `__MSVCRT_VERSION__` to value
 less than `0x900` and vice versa.
 
     $ ../configure CPPFLAGS="-D__MSVCRT_VERSION__=0x700"
+
+
+Windows and Visual Studio
+-------------------------
+
+[log4cplus] uses C++11 thread and synchronization facilities. The
+synchronization facilities are implemented in Visual Studio C++ standard
+library in a way that utilizes global variables. Therefore it is impossible
+(due to "static initialization order fiasco") to use them outside
+`main()`. This issue manifests as a deadlock on exit during destruction of
+[log4cplus]' thread pool.
+
+To overcome this limitation,
+
+  - always use `log4cplus::Initializer initializer;` as the first thing in
+`main()`;
+
+  - never try to log from static/global objects constructors;
+
+  - never try to log from static/global object destructors.
+
+Defining the `log4cplus::Initializer` instance as the first thing in `main()`
+ensures that [log4cplus] is initialized. More importantly, it ensures that
+[log4cplus] shuts down before the execution leaves the `main()` function.
+
+
+Windows and rolling file Appenders
+----------------------------------
+
+On Windows, the standard C++ file streams open files in way that underlying
+Win32 file `HANDLE` is not open with `FILE_SHARE_DELETE` flag. This flag,
+beside shared delete, allows renaming files that have handles open to
+them. This issue manifests as error code 13 when the file needs to be rolled
+over and it is still open by another process.
+
+This is also [bug #167](https://sourceforge.net/p/log4cplus/bugs/167/) on
+SourceForge.
 
 
 Windows and TLS
@@ -291,7 +347,7 @@ variants that support threading using the `CXX` variable on
 
     $ ../configure --enable-threads CXX=xlC_r
 
-[1]: http://pic.dhe.ibm.com/infocenter/comphelp/v121v141/index.jsp?topic=%2Fcom.ibm.xlcpp121.aix.doc%2Fcompiler_ref%2Ftucmpinv.html
+[1]: http://www.ibm.com/support/knowledgecenter/en/SSGH3R_12.1.0/com.ibm.xlcpp121.aix.doc/compiler_ref/tucmpinv.html
 
 
 AIX reentrancy problem
@@ -430,11 +486,11 @@ Add these lines to qmake project file for using [log4cplus] and
     INCLUDEPATH += C:\log4cplus\include
     win32 {
         CONFIG(debug, debug|release) {
-            LIBS += -LC:\log4cplus\msvc10\Win32\bin.Debug_Unicode -llog4cplusUD
-            LIBS += -LC:\log4cplus\msvc10\Win32\bin.Debug_Unicode -llog4cplus-Qt4DebugAppender
+            LIBS += -LC:\log4cplus\msvc14\Win32\bin.Debug_Unicode -llog4cplusUD
+            LIBS += -LC:\log4cplus\msvc14\Win32\bin.Debug_Unicode -llog4cplus-Qt4DebugAppender
         } else {
-            LIBS += -LC:\log4cplus\msvc10\Win32\bin.Release_Unicode -llog4cplusU
-            LIBS += -LC:\log4cplus\msvc10\Win32\bin.Release_Unicode -llog4cplus-Qt4DebugAppender
+            LIBS += -LC:\log4cplus\msvc14\Win32\bin.Release_Unicode -llog4cplusU
+            LIBS += -LC:\log4cplus\msvc14\Win32\bin.Release_Unicode -llog4cplus-Qt4DebugAppender
         }
     }
 
@@ -462,6 +518,49 @@ is fixed in OpenBSD 5.3 and later. This shows as failing
 `CXXFLAGS`.
 
 
+iOS support
+-----------
+
+iOS support is based on CMake build. Use the scripts in `iOS` directory. The
+`iOS.cmake` toolchain file was originally taken from [ios-cmake] project.
+
+To build the library for iOS, being in current folder, perform the steps
+below. For ARMv7 architecture:
+
+    $ ./scripts/cmake_ios_armv7.sh
+    $ cmake --build ./build_armv7 --config "Release"
+    $ cmake --build ./build_armv7 --config "Debug"
+
+For i386 architecture:
+
+    $ ./scripts/cmake_ios_i386.sh
+    $ cmake --build ./build_i386 --config "Release"
+    $ cmake --build ./build_i386 --config "Debug"
+
+Some versions of the iOS and/or its SDK have problems with thread-local storage
+(TLS) and getting through CMake's environment detection phase. To work around
+these issues, make these changes:
+
+Edit the `iOS.cmake` file and add these two lines.
+
+    set (CMAKE_CXX_COMPILER_WORKS TRUE)
+    set (CMAKE_C_COMPILER_WORKS TRUE)
+
+Add these lines. Customize them accordingly:
+
+    set(MACOSX_BUNDLE_GUI_IDENTIFIER com.example)
+    set(CMAKE_MACOSX_BUNDLE YES)
+    set(CMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "iPhone Developer")
+    set(IPHONEOS_ARCHS arm64)
+
+If you have issues with TLS, also comment out these lines:
+
+    set(LOG4CPLUS_HAVE_TLS_SUPPORT 1)
+    set(LOG4CPLUS_THREAD_LOCAL_VAR "__thread")
+
+[ios-cmake]: https://code.google.com/p/ios-cmake/
+
+
 `LOG4CPLUS_*_FMT()` and UNICODE
 -------------------------------
 
@@ -480,34 +579,49 @@ argument on both Unix--like platforms and Windows. The conversion of
 `wchar_t` back to `char` then depends on C locale.
 
 
-C++11 support
--------------
+Unsupported compilers and platforms
+-----------------------------------
 
-[log4cplus] contains small amount of code that uses C++11 (ISO/IEC
-14882:2011 standard) language features.  C++11 features are used only
-if C++11 support is detected during compile time.  Compiling
-[log4cplus] with C++11 compiler and standard library and using it with
-C++03 (ISO/IEC 14882:2003 standard) application is not supported.
+[log4cplus] does not support too old or broken C++ compilers. Since [log4cplus]
+version 2.0.0, it means it does not support any platform or compiler without
+decent C++11 support.
 
-
-Unsupported compilers
----------------------
-
-[log4cplus] does not support too old or broken C++ compilers:
-
-- Visual C++ prior to 7.1
-- GCC prior to 3.2
-- Older versions of Borland/CodeGear/Embarcadero C++ compilers
+  - Visual Studio prior to 2015
+  - GCC prior to 4.8
 
 
-Unsupported platforms
----------------------
+Bug reporting instructions
+--------------------------
 
-[log4cplus] requires some minimal set of C and/or C++ library
-functions. Some systems/platforms fail to provide these functions and
-thus [log4cplus] cannot be supported there:
+For successful resolution of reported bugs, it is necessary to provide enough information:
 
-- Windows CE -- missing implementations of `<time.h>` functions
+- [log4cplus]
+    - What is the exact release version or Git branch and revision?
+    - What is the build system that you are building [log4cplus] with
+      (Autotools, Visual Studio solution and its version, CMake).
+    - Autotools -- Provide `configure` script parameters and environment
+      variables, attach generated `config.log` and `defines.hxx` files.
+    - CMake -- Provide build configuration (`Release`, `Debug`,
+      `RelWithDebInfo`) and non--default `CMAKE_*` variables values.
+    - Visual Studio -- Provide project configuration (`Release`,
+      `Release_Unicode`, `Debug`, `Debug_Unicode`) and Visual Studio version.
+    - Provide target OS and CPU. In case of MinGW, provide its exact compiler
+      distribution -- TDM? Nuwen? Other?
+
+- [log4cplus] client application
+    - Are you using shared library [log4cplus] or as static library [log4cplus]?
+    - Is [log4cplus] linked into an executable or into a shared library (DLL or
+      SO)?
+    - If [log4cplus] is linked into a shared library, is this library
+      loaded dynamically or not?
+    - What library file you are linking your application with --
+      `log4cplus.lib`, `log4cplusUSD.lib`, `liblog4cplus.dll.a`, etc., on
+      Windows?
+    - Is your application is using Unicode/`wchar_t` or not?
+    - Provide any error messages.
+    - Provide stack trace.
+    - Provide [log4cplus] properties/configuration files.
+    - Provide a self--contained test case, if possible.
 
 
 License
@@ -522,9 +636,9 @@ Contributions
 =============
 
 [log4cplus] (bug tracker, files, wiki) is hosted on SourceForge,
-except for [log4cplus source][5], which is hosted on Github. This
+except for [log4cplus source][5], which is hosted on GitHub. This
 allows the project to integrate with [Travis CI][11] service offered
-by Github.
+by GitHub.
 
 [5]: https://sourceforge.net/p/log4cplus/source-code-link/
 [11]: https://sourceforge.net/p/log4cplus/travis-ci/
@@ -562,3 +676,41 @@ guide line:
                 (arglist-cont-nonempty . +)
                 (template-args-cont . +))))
 ~~~~
+
+
+Tools
+-----
+
+### Build system
+
+[log4cplus] supports multiple build systems (GNU Autoconf/Automake/Libtool aka
+Autotools, CMake and Visual Studio solution and project files).
+
+Autotools is considered the primary build system on Unix--like
+platforms. However, CMake should still be usable on Unix--like platforms as
+well.
+
+On Windows, it depends on compiler and tool-chain that you want to use. When
+using Visual Studio, use Visual Studio solution and project files. However,
+CMake build system should still work and produce useful results. When using
+some form of MinGW64 tool-chain, the CMake build system is considered primary
+and the Autotools based build system is unsupported. Use the `MinGW Makefiles`
+option and build with `mingw-make` (or similar). The `MSYS Makefiles` option is
+untested and unsupported.
+
+#### Autotools
+
+The `Makefile.am` files for this build systems are hand written. Some of them,
+however, are generated from `Makefile.am.tpl` and `Makefile.am.def` by
+[GNU Autogen][12]. This is to make adding new files to the source easier.
+
+To regenerate `Makefile.am` files, `configure` script, `testsuite` script or
+any other part of the Autotools build system, use the `scripts/doautoreconf.sh`
+script from source root directory. It will invoke all the necessary tools in
+the correct order.
+
+[log4cplus] closely follows Autoconf's, Automake's and Libtool's development
+and its master branch files are always generated using the latest available
+version of the tools.
+
+[12]: http://www.gnu.org/software/autogen/

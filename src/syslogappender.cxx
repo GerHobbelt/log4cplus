@@ -3,7 +3,7 @@
 // Created: 6/2001
 // Author:  Tad E. Smith
 //
-// Copyright 2001-2015 Tad E. Smith
+// Copyright 2001-2017 Tad E. Smith
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -86,7 +86,7 @@ const char*
 useIdent (const std::string& string)
 {
     if (string.empty ())
-        return 0;
+        return nullptr;
     else
         return string.c_str ();
 }
@@ -224,6 +224,7 @@ SysLogAppender::SysLogAppender(const tstring& id)
     , facility (0)
     , appendFunc (&SysLogAppender::appendLocal)
     , port (0)
+    , remoteSyslogType ()
     , connected (false)
     // Store std::string form of ident as member of SysLogAppender so
     // the address of the c_str() result remains stable for openlog &
@@ -240,7 +241,7 @@ SysLogAppender::SysLogAppender(const tstring& id)
 SysLogAppender::SysLogAppender(const helpers::Properties & properties)
     : Appender(properties)
     , facility (0)
-    , appendFunc (0)
+    , appendFunc (nullptr)
     , port (0)
     , connected (false)
     , hostname (helpers::getHostname (true))
@@ -254,6 +255,8 @@ SysLogAppender::SysLogAppender(const helpers::Properties & properties)
     bool udp = true;
     properties.getBool (udp, LOG4CPLUS_TEXT ("udp"));
     remoteSyslogType = udp ? RSTUdp : RSTTcp;
+
+    properties.getBool (ipv6, LOG4CPLUS_TEXT ("IPv6"));
 
     properties.getString (host, LOG4CPLUS_TEXT ("host"))
       || properties.getString (host, LOG4CPLUS_TEXT ("SyslogHost"));
@@ -283,7 +286,8 @@ SysLogAppender::SysLogAppender(const helpers::Properties & properties)
 
 
 SysLogAppender::SysLogAppender(const tstring& id, const tstring & h,
-    int p, const tstring & f, SysLogAppender::RemoteSyslogType rst)
+    int p, const tstring & f, SysLogAppender::RemoteSyslogType rst,
+    bool ipv6_ /*= false*/)
     : ident (id)
     , facility (parseFacility (helpers::toLower (f)))
     , appendFunc (&SysLogAppender::appendRemote)
@@ -291,6 +295,7 @@ SysLogAppender::SysLogAppender(const tstring& id, const tstring & h,
     , port (p)
     , remoteSyslogType (rst)
     , connected (false)
+    , ipv6 (ipv6_)
     // Store std::string form of ident as member of SysLogAppender so
     // the address of the c_str() result remains stable for openlog &
     // co to use even if we use wstrings.
@@ -430,7 +435,8 @@ SysLogAppender::appendRemote(const spi::InternalLoggingEvent& event)
         << 1
         // TIMESTAMP
         << LOG4CPLUS_TEXT (' ')
-        << event.getTimestamp ().getFormattedTime (remoteTimeFormat, true)
+        << helpers::getFormattedTime (remoteTimeFormat, event.getTimestamp (),
+            true)
         // HOSTNAME
         << LOG4CPLUS_TEXT (' ') << hostname
         // APP-NAME
@@ -446,8 +452,7 @@ SysLogAppender::appendRemote(const spi::InternalLoggingEvent& event)
     // MSG
     layout->formatAndAppend (appender_sp.oss, event);
 
-    LOG4CPLUS_TSTRING_TO_STRING (appender_sp.oss.str ())
-        .swap (appender_sp.chstr);
+    appender_sp.chstr = LOG4CPLUS_TSTRING_TO_STRING (appender_sp.oss.str ());
 
     if (remoteSyslogType != RSTUdp)
     {
@@ -523,7 +528,7 @@ void
 SysLogAppender::openSocket ()
 {
     syslogSocket = helpers::Socket (host, static_cast<unsigned short>(port),
-        remoteSyslogType == RSTUdp);
+        remoteSyslogType == RSTUdp, ipv6);
     connected = syslogSocket.isOpen ();
     if (! connected)
         helpers::getLogLog ().error (

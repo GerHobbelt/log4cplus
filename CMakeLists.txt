@@ -12,9 +12,16 @@ endif ()
 set (CMAKE_LEGACY_CYGWIN_WIN32 0)
 
 project (log4cplus)
-cmake_minimum_required (VERSION 2.8.4)
+cmake_minimum_required (VERSION 3.1)
 
 enable_language (CXX)
+if (MSVC)
+  #set (CMAKE_CXX_STANDARD 14)
+else ()
+  set (CMAKE_CXX_STANDARD 11)
+endif ()
+set (CMAKE_CXX_STANDARD_REQUIRED ON)
+set (CMAKE_CXX_EXTENSIONS ON)
 include(GNUInstallDirs)
 
 include (Log4CPlusUtils.cmake)
@@ -25,7 +32,6 @@ set (log4cplus_soversion 0)
 set (log4cplus_postfix "")
 
 option(LOG4CPLUS_BUILD_TESTING "Build the test suite." ON)
-
 option(LOG4CPLUS_BUILD_LOGGINGSERVER "Build the logging server." ON)
 
 if(NOT LOG4CPLUS_SINGLE_THREADED)
@@ -58,6 +64,13 @@ option(LOG4CPLUS_WORKING_C_LOCALE
   "Define for compilers/standard libraries that have working C locale."
   OFF)
 
+option(LOG4CPLUS_SINGLE_THREADED
+  "Define if you want to build single-threaded version of the library."
+  OFF)
+if (LOG4CPLUS_SINGLE_THREADED)
+  add_definitions (-DLOG4CPLUS_SINGLE_THREADED=1)
+endif (LOG4CPLUS_SINGLE_THREADED)
+
 option (LOG4CPLUS_QT4 "Build with Qt4DebugAppender" OFF)
 option (LOG4CPLUS_QT5 "Build with Qt5DebugAppender" OFF)
 
@@ -70,7 +83,20 @@ option(ENABLE_SYMBOLS_VISIBILITY
   "Enable compiler and platform specific options for symbols visibility"
   ON)
 
-set(_WIN32_WINNT 0x0500 CACHE STRING "Define Windows API version to use.")
+if (MINGW)
+  option(LOG4CPLUS_MINGW_STATIC_RUNTIME "Enable MinGW static runtime" OFF)
+endif()
+
+option(WITH_UNIT_TESTS "Enable unit tests" ON)
+if (WITH_UNIT_TESTS)
+  set (LOG4CPLUS_WITH_UNIT_TESTS 1)
+  add_definitions (-DCATCH_CONFIG_PREFIX_ALL=1)
+  if (WIN32)
+    add_definitions (-DLOG4CPLUS_WITH_UNIT_TESTS=1)
+  endif (WIN32)
+endif (WITH_UNIT_TESTS)
+
+set(_WIN32_WINNT 0x0600 CACHE STRING "Define Windows API version to use.")
 
 option(LOG4CPLUS_ENABLE_DECORATED_LIBRARY_NAME
   "Turns on resulting file name decoration for static and UNICODE builds." ON)
@@ -116,6 +142,8 @@ file(WRITE ${DEFINES_HXX_CMAKE} ${FILE_BUFFER})
 configure_file(${DEFINES_HXX_CMAKE} ${DEFINES_HXX} @ONLY)
 
 include_directories (${log4cplus_SOURCE_DIR}/include
+                     ${log4cplus_SOURCE_DIR}/threadpool
+                     ${log4cplus_SOURCE_DIR}/catch/single_include
                      ${log4cplus_BINARY_DIR}/include
                     )
 
@@ -142,3 +170,12 @@ if (LOG4CPLUS_QT5)
 endif (LOG4CPLUS_QT5)
 
 include(Log4CPlusCPack.cmake)
+
+# Automatically check out submodules
+execute_process(COMMAND git submodule update --init WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+message (STATUS "Compiler: ${CMAKE_CXX_COMPILER}")
+message (STATUS "${CMAKE_CXX_COMPILER_ID} version ${CMAKE_CXX_COMPILER_VERSION}")
+message (STATUS "Compiler flags: ${CMAKE_CXX_FLAGS}")
+message (STATUS "System name: ${CMAKE_SYSTEM_NAME}")
+message (STATUS "System version: ${CMAKE_SYSTEM_VERSION}")

@@ -4,7 +4,7 @@
 // Author:  Tad E. Smith
 //
 //
-// Copyright 2003-2015 Tad E. Smith
+// Copyright 2003-2017 Tad E. Smith
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@
 
 #include <log4cplus/helpers/loglog.h>
 #include <log4cplus/internal/socket.h>
+#include <log4cplus/internal/internal.h>
 
 
 namespace log4cplus { namespace helpers {
@@ -38,27 +39,27 @@ extern LOG4CPLUS_EXPORT SOCKET_TYPE const INVALID_SOCKET_VALUE
 //////////////////////////////////////////////////////////////////////////////
 
 AbstractSocket::AbstractSocket()
-: sock(INVALID_SOCKET_VALUE),
-  state(not_opened),
-  err(0)
+    : sock(INVALID_SOCKET_VALUE),
+      state(not_opened),
+      err(0)
 {
 }
 
 
 
-AbstractSocket::AbstractSocket(SOCKET_TYPE sock_,
-    SocketState state_, int err_)
-: sock(sock_),
-  state(state_),
-  err(err_)
+AbstractSocket::AbstractSocket(SOCKET_TYPE sock_, SocketState state_, int err_)
+    : sock(sock_),
+      state(state_),
+      err(err_)
 {
 }
 
 
 
-AbstractSocket::AbstractSocket(const AbstractSocket& rhs)
+AbstractSocket::AbstractSocket(AbstractSocket && rhs) LOG4CPLUS_NOEXCEPT
+    : AbstractSocket ()
 {
-    copy(rhs);
+    swap (rhs);
 }
 
 
@@ -76,9 +77,11 @@ AbstractSocket::~AbstractSocket()
 void
 AbstractSocket::close()
 {
-    if(sock != INVALID_SOCKET_VALUE) {
+    if (sock != INVALID_SOCKET_VALUE)
+    {
         closeSocket(sock);
         sock = INVALID_SOCKET_VALUE;
+        state = not_opened;
     }
 }
 
@@ -86,9 +89,8 @@ AbstractSocket::close()
 void
 AbstractSocket::shutdown()
 {
-    if(sock != INVALID_SOCKET_VALUE) {
+    if (sock != INVALID_SOCKET_VALUE)
         shutdownSocket(sock);
-    }    
 }
 
 
@@ -99,32 +101,23 @@ AbstractSocket::isOpen() const
 }
 
 
-
-AbstractSocket&
-AbstractSocket::operator=(const AbstractSocket& rhs)
+AbstractSocket &
+AbstractSocket::operator = (AbstractSocket && rhs) LOG4CPLUS_NOEXCEPT
 {
-    if(&rhs != this) {
-        close();
-        copy(rhs);
-    }
-
+    swap (rhs);
     return *this;
 }
 
 
-
 void
-AbstractSocket::copy(const AbstractSocket& r)
+AbstractSocket::swap (AbstractSocket & rhs)
 {
-    AbstractSocket& rhs = const_cast<AbstractSocket&>(r);
-    sock = rhs.sock;
-    state = rhs.state;
-    err = rhs.err;
-    rhs.sock = INVALID_SOCKET_VALUE;
-    rhs.state = not_opened;
-    rhs.err = 0;
-}
+    using std::swap;
 
+    swap (sock, rhs.sock);
+    swap (state, rhs.state);
+    swap (err, rhs.err);
+}
 
 
 //////////////////////////////////////////////////////////////////////////////
@@ -136,10 +129,11 @@ Socket::Socket()
 { }
 
 
-Socket::Socket(const tstring& address, unsigned short port, bool udp /*= false*/)
+Socket::Socket(const tstring& address, unsigned short port,
+    bool udp /*= false*/, bool ipv6 /*= false */)
     : AbstractSocket()
 {
-    sock = connectSocket(address, port, udp, state);
+    sock = connectSocket(address, port, udp, ipv6, state);
     if (sock == INVALID_SOCKET_VALUE)
         goto error;
 
@@ -158,9 +152,21 @@ Socket::Socket(SOCKET_TYPE sock_, SocketState state_, int err_)
 { }
 
 
+Socket::Socket (Socket && other) LOG4CPLUS_NOEXCEPT
+    : AbstractSocket (std::move (other))
+{ }
+
+
 Socket::~Socket()
 { }
 
+
+Socket &
+Socket::operator = (Socket && other) LOG4CPLUS_NOEXCEPT
+{
+    swap (other);
+    return *this;
+}
 
 
 //////////////////////////////////////////////////////////////////////////////
@@ -196,6 +202,17 @@ Socket::write(const SocketBuffer& buffer)
 
 
 bool
+Socket::write(std::size_t bufferCount, SocketBuffer const * const * buffers)
+{
+    long retval = helpers::write(sock, bufferCount, buffers);
+    if (retval <= 0)
+        close ();
+
+    return retval > 0;
+}
+
+
+bool
 Socket::write(const std::string & buffer)
 {
     long retval = helpers::write (sock, buffer);
@@ -203,6 +220,46 @@ Socket::write(const std::string & buffer)
         close();
 
     return retval > 0;
+}
+
+
+//
+//
+//
+
+ServerSocket::ServerSocket (ServerSocket && other) LOG4CPLUS_NOEXCEPT
+    : AbstractSocket (std::move (other))
+{
+    interruptHandles[0] = -1;
+    interruptHandles[1] = -1;
+    interruptHandles.swap (other.interruptHandles);
+}
+
+
+ServerSocket &
+ServerSocket::operator = (ServerSocket && other) LOG4CPLUS_NOEXCEPT
+{
+    swap (other);
+    return *this;
+}
+
+
+void
+ServerSocket::swap (ServerSocket & other)
+{
+    AbstractSocket::swap (other);
+    interruptHandles.swap (other.interruptHandles);
+}
+
+
+//
+//
+//
+
+SOCKET_TYPE
+openSocket(unsigned short port, bool udp, bool ipv6, SocketState& state)
+{
+    return openSocket(log4cplus::internal::empty_str, port, udp, ipv6, state);
 }
 
 

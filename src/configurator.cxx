@@ -4,7 +4,7 @@
 // Author:  Tad E. Smith
 //
 //
-// Copyright 2003-2015 Tad E. Smith
+// Copyright 2003-2017 Tad E. Smith
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@
 #include <log4cplus/hierarchylocker.h>
 #include <log4cplus/hierarchy.h>
 #include <log4cplus/helpers/loglog.h>
-#include <log4cplus/helpers/sleep.h>
 #include <log4cplus/helpers/stringhelper.h>
 #include <log4cplus/helpers/property.h>
 #include <log4cplus/helpers/timehelper.h>
@@ -51,7 +50,6 @@
 #include <cstdlib>
 #include <iterator>
 #include <sstream>
-#include <functional>
 
 
 namespace log4cplus
@@ -140,7 +138,7 @@ namespace
                 dest = val;
                 return false;
             }
-            
+
             key.assign (pattern, var_start + DELIM_START_LEN,
                 var_end - (var_start + DELIM_START_LEN));
             replacement.clear ();
@@ -148,7 +146,7 @@ namespace
                 replacement = props.getProperty (key);
             if (! shadow_env || (! empty_vars && replacement.empty ()))
                 internal::get_env_var (replacement, key);
-            
+
             if (empty_vars || ! replacement.empty ())
             {
                 // Substitute the variable with its value in place.
@@ -340,10 +338,10 @@ PropertyConfigurator::replaceEnvironVariables()
         = !! (flags & PropertyConfigurator::fRecursiveExpansion);
     bool changed;
 
-    do 
+    do
     {
         changed = false;
-        properties.propertyNames().swap (keys);
+        keys = properties.propertyNames();
         for (std::vector<tstring>::const_iterator it = keys.begin();
             it != keys.end(); ++it)
         {
@@ -384,11 +382,10 @@ PropertyConfigurator::configureLoggers()
     helpers::Properties loggerProperties
         = properties.getPropertySubset(LOG4CPLUS_TEXT("logger."));
     std::vector<tstring> loggers = loggerProperties.propertyNames();
-    for(std::vector<tstring>::iterator it=loggers.begin(); it!=loggers.end();
-        ++it)
+    for (tstring const & loggerName : loggers)
     {
-        Logger log = getLogger(*it);
-        configureLogger(log, loggerProperties.getProperty(*it));
+        Logger log = getLogger(loggerName);
+        configureLogger(log, loggerProperties.getProperty(loggerName));
     }
 }
 
@@ -401,7 +398,7 @@ PropertyConfigurator::configureLogger(Logger logger, const tstring& config)
     tstring configString;
     std::remove_copy_if(config.begin(), config.end(),
         std::back_inserter (configString),
-        std::bind1st(std::equal_to<tchar>(), LOG4CPLUS_TEXT(' ')));
+        [](tchar const ch) -> bool { return ch == LOG4CPLUS_TEXT(' '); });
 
     // "Tokenize" configString
     std::vector<tstring> tokens;
@@ -433,7 +430,7 @@ PropertyConfigurator::configureLogger(Logger logger, const tstring& config)
     // Set the Appenders
     for(std::vector<tstring>::size_type j=1; j<tokens.size(); ++j)
     {
-        AppenderMap::iterator appenderIt = appenders.find(tokens[j]);
+        auto appenderIt = appenders.find(tokens[j]);
         if (appenderIt == appenders.end())
         {
             helpers::getLogLog().error(
@@ -455,25 +452,24 @@ PropertyConfigurator::configureAppenders()
         properties.getPropertySubset(LOG4CPLUS_TEXT("appender."));
     std::vector<tstring> appendersProps = appenderProperties.propertyNames();
     tstring factoryName;
-    for(std::vector<tstring>::iterator it=appendersProps.begin();
-        it != appendersProps.end(); ++it)
+    for (tstring & appenderName : appendersProps)
     {
-        if( it->find( LOG4CPLUS_TEXT('.') ) == tstring::npos )
+        if (appenderName.find (LOG4CPLUS_TEXT('.')) == tstring::npos)
         {
-            factoryName = appenderProperties.getProperty(*it);
-            spi::AppenderFactory* factory 
+            factoryName = appenderProperties.getProperty(appenderName);
+            spi::AppenderFactory* factory
                 = spi::getAppenderFactoryRegistry().get(factoryName);
             if (! factory)
             {
-                tstring err =
+                helpers::getLogLog().error(
                     LOG4CPLUS_TEXT("PropertyConfigurator::configureAppenders()")
-                    LOG4CPLUS_TEXT("- Cannot find AppenderFactory: ");
-                helpers::getLogLog().error(err + factoryName);
+                    LOG4CPLUS_TEXT("- Cannot find AppenderFactory: ")
+                    + factoryName);
                 continue;
             }
 
             helpers::Properties props_subset
-                = appenderProperties.getPropertySubset((*it)
+                = appenderProperties.getPropertySubset(appenderName
                 + LOG4CPLUS_TEXT("."));
             try
             {
@@ -481,25 +477,25 @@ PropertyConfigurator::configureAppenders()
                     = factory->createObject(props_subset);
                 if (! appender)
                 {
-                    tstring err =
+                    helpers::getLogLog().error(
                         LOG4CPLUS_TEXT("PropertyConfigurator::")
                         LOG4CPLUS_TEXT("configureAppenders()")
-                        LOG4CPLUS_TEXT("- Failed to create appender: ");
-                    helpers::getLogLog().error(err + *it);
+                        LOG4CPLUS_TEXT("- Failed to create Appender: ")
+                        + appenderName);
                 }
                 else
                 {
-                    appender->setName(*it);
-                    appenders[*it] = appender;
+                    appender->setName(appenderName);
+                    appenders[std::move (appenderName)] = appender;
                 }
             }
             catch(std::exception const & e)
             {
-                tstring err =
+                helpers::getLogLog().error(
                     LOG4CPLUS_TEXT("PropertyConfigurator::")
                     LOG4CPLUS_TEXT("configureAppenders()")
-                    LOG4CPLUS_TEXT("- Error while creating Appender: ");
-                helpers::getLogLog().error(err + LOG4CPLUS_C_STR_TO_TSTRING(e.what()));
+                    LOG4CPLUS_TEXT("- Error while creating Appender: ")
+                    + LOG4CPLUS_C_STR_TO_TSTRING(e.what()));
             }
         }
     } // end for loop
@@ -514,12 +510,11 @@ PropertyConfigurator::configureAdditivity()
     std::vector<tstring> additivitysProps
         = additivityProperties.propertyNames();
 
-    for(std::vector<tstring>::const_iterator it = additivitysProps.begin();
-        it != additivitysProps.end(); ++it)
+    for (tstring const & loggerName : additivitysProps)
     {
-        Logger logger = getLogger(*it);
+        Logger logger = getLogger(loggerName);
         bool additivity;
-        if (additivityProperties.getBool (additivity, *it))
+        if (additivityProperties.getBool (additivity, loggerName))
             logger.setAdditivity (additivity);
     }
 }
@@ -586,7 +581,7 @@ BasicConfigurator::doConfigure(Hierarchy& h, bool logToStdErr)
 // ConfigurationWatchDogThread implementation
 //////////////////////////////////////////////////////////////////////////////
 
-class ConfigurationWatchDogThread 
+class ConfigurationWatchDogThread
     : public thread::AbstractThread,
       public PropertyConfigurator
 {
@@ -595,9 +590,9 @@ public:
         : PropertyConfigurator(file)
         , waitMillis(millis < 1000 ? 1000 : millis)
         , shouldTerminate(false)
-        , lock(NULL)
+        , lock(nullptr)
     {
-        lastFileInfo.mtime = helpers::Time::gettimeofday ();
+        lastFileInfo.mtime = helpers::now ();
         lastFileInfo.size = 0;
         lastFileInfo.is_link = false;
 
@@ -606,7 +601,7 @@ public:
 
     virtual ~ConfigurationWatchDogThread ()
     { }
-    
+
     void terminate ()
     {
         shouldTerminate.signal ();
@@ -617,10 +612,10 @@ protected:
     virtual void run();
     virtual Logger getLogger(const tstring& name);
     virtual void addAppender(Logger &logger, SharedAppenderPtr& appender);
-    
+
     bool checkForFileModification();
     void updateLastModInfo();
-    
+
 private:
     ConfigurationWatchDogThread (ConfigurationWatchDogThread const &);
     ConfigurationWatchDogThread & operator = (
@@ -650,7 +645,7 @@ ConfigurationWatchDogThread::run()
             updateLastModInfo();
 
             // release the lock
-            lock = NULL;
+            lock = nullptr;
         }
     }
 }
@@ -696,7 +691,7 @@ ConfigurationWatchDogThread::checkForFileModification()
                 &fileStatus) == -1)
             return false;
 
-        helpers::Time linkModTime(fileStatus.st_mtime);
+        helpers::Time linkModTime(helpers::from_time_t (fileStatus.st_mtime));
         modified = (linkModTime > fi.mtime);
     }
 #endif
@@ -723,7 +718,7 @@ ConfigurationWatchDogThread::updateLastModInfo()
 
 ConfigureAndWatchThread::ConfigureAndWatchThread(const tstring& file,
     unsigned int millis)
-    : watchDogThread(0)
+    : watchDogThread(nullptr)
 {
     watchDogThread = new ConfigurationWatchDogThread(file, millis);
     watchDogThread->addReference ();

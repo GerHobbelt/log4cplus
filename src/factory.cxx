@@ -4,7 +4,7 @@
 // Author:  Tad E. Smith
 //
 //
-// Copyright 2002-2015 Tad E. Smith
+// Copyright 2002-2017 Tad E. Smith
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 namespace log4cplus {
-    
+
 namespace spi {
 
 BaseFactory::~BaseFactory()
@@ -86,13 +86,13 @@ class GlobalLocale
     : public LocalFactoryBase<LocaleFactory>
 {
 public:
+    explicit
     GlobalLocale (tchar const * n)
         : LocalFactoryBase<LocaleFactory> (n)
     { }
 
-    virtual
     ProductPtr
-    createObject (const log4cplus::helpers::Properties &)
+    createObject (const log4cplus::helpers::Properties &) override
     {
         return std::locale ();
     }
@@ -103,13 +103,13 @@ class UserLocale
     : public LocalFactoryBase<LocaleFactory>
 {
 public:
+    explicit
     UserLocale (tchar const * n)
         : LocalFactoryBase<LocaleFactory> (n)
     { }
 
-    virtual
     ProductPtr
-    createObject (const log4cplus::helpers::Properties &)
+    createObject (const log4cplus::helpers::Properties &) override
     {
         return std::locale ("");
     }
@@ -120,13 +120,13 @@ class ClassicLocale
     : public LocalFactoryBase<LocaleFactory>
 {
 public:
+    explicit
     ClassicLocale (tchar const * n)
         : LocalFactoryBase<LocaleFactory> (n)
     { }
 
-    virtual
     ProductPtr
-    createObject (const log4cplus::helpers::Properties &)
+    createObject (const log4cplus::helpers::Properties &) override
     {
         return std::locale::classic ();
     }
@@ -149,6 +149,7 @@ struct DisableFactoryLocking
 {
     typedef Factory factory_type;
 
+    explicit
     DisableFactoryLocking (factory_type & f)
         : factory (f)
     {

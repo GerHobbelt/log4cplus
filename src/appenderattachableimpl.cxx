@@ -4,7 +4,7 @@
 // Author:  Tad E. Smith
 //
 //
-// Copyright 2001-2015 Tad E. Smith
+// Copyright 2001-2017 Tad E. Smith
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -67,16 +67,17 @@ AppenderAttachableImpl::~AppenderAttachableImpl()
 void
 AppenderAttachableImpl::addAppender(SharedAppenderPtr newAppender)
 {
-    if(newAppender == NULL) {
+    if (! newAppender)
+    {
         getLogLog().warn( LOG4CPLUS_TEXT("Tried to add NULL appender") );
         return;
     }
 
     thread::MutexGuard guard (appender_list_mutex);
 
-    ListType::iterator it =
-        std::find(appenderList.begin(), appenderList.end(), newAppender);
-    if(it == appenderList.end()) {
+    auto it = std::find(appenderList.begin(), appenderList.end(), newAppender);
+    if (it == appenderList.end())
+    {
         appenderList.push_back(newAppender);
     }
 }
@@ -98,16 +99,13 @@ AppenderAttachableImpl::getAppender(const log4cplus::tstring& name)
 {
     thread::MutexGuard guard (appender_list_mutex);
 
-    for(ListType::iterator it=appenderList.begin();
-        it!=appenderList.end();
-        ++it)
+    for (SharedAppenderPtr & ptr : appenderList)
     {
-        if((*it)->getName() == name) {
-            return *it;
-        }
+        if (ptr->getName() == name)
+            return ptr;
     }
 
-    return SharedAppenderPtr(NULL);
+    return SharedAppenderPtr ();
 }
 
 
@@ -121,10 +119,8 @@ AppenderAttachableImpl::removeAllAppenders()
     // std::vector elements is surprisingly unspecified and it breaks our
     // tests' expectations.
 
-    for (ListType::iterator it = appenderList.begin (),
-             end = appenderList.end ();
-         it != end; ++it)
-        *it = SharedAppenderPtr ();
+    for (auto & app : appenderList)
+        app = SharedAppenderPtr ();
 
     appenderList.clear ();
 }
@@ -134,16 +130,17 @@ AppenderAttachableImpl::removeAllAppenders()
 void
 AppenderAttachableImpl::removeAppender(SharedAppenderPtr appender)
 {
-    if(appender == NULL) {
+    if (! appender)
+    {
         getLogLog().warn( LOG4CPLUS_TEXT("Tried to remove NULL appender") );
         return;
     }
 
     thread::MutexGuard guard (appender_list_mutex);
 
-    ListType::iterator it =
-        std::find(appenderList.begin(), appenderList.end(), appender);
-    if(it != appenderList.end()) {
+    auto it = std::find(appenderList.begin(), appenderList.end(), appender);
+    if (it != appenderList.end())
+    {
         appenderList.erase(it);
     }
 }
@@ -165,12 +162,10 @@ AppenderAttachableImpl::appendLoopOnAppenders(const spi::InternalLoggingEvent& e
 
     thread::MutexGuard guard (appender_list_mutex);
 
-    for(ListType::const_iterator it=appenderList.begin();
-        it!=appenderList.end();
-        ++it)
+    for (auto & appender : appenderList)
     {
         ++count;
-        (*it)->doAppend(event);
+        appender->doAppend(event);
     }
 
     return count;

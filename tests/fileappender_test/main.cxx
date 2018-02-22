@@ -5,6 +5,7 @@
 #include <log4cplus/helpers/loglog.h>
 #include <log4cplus/helpers/property.h>
 #include <log4cplus/loggingmacros.h>
+#include <log4cplus/initializer.h>
 
 
 using namespace log4cplus;
@@ -15,13 +16,13 @@ const int LOOP_COUNT = 20000;
 int
 main()
 {
-    log4cplus::initialize ();
+    log4cplus::Initializer initializer;
     helpers::LogLog::getLogLog()->setInternalDebugging(true);
     SharedFileAppenderPtr append_1(
-        new RollingFileAppender(LOG4CPLUS_TEXT("a/b/c/d/Test.log"), 5*1024, 5,
+        new RollingFileAppender(LOG4CPLUS_TEXT("a////b/c/d/Test.log"), 5*1024, 5,
             false, true));
     append_1->setName(LOG4CPLUS_TEXT("First"));
-    append_1->setLayout( std::auto_ptr<Layout>(new TTCCLayout()) );
+    append_1->setLayout( std::unique_ptr<Layout>(new TTCCLayout()) );
     append_1->getloc();
     Logger::getRoot().addAppender(SharedAppenderPtr(append_1.get ()));
 
@@ -62,8 +63,6 @@ main()
         FileAppender appender (props);
         appender.setName (LOG4CPLUS_TEXT ("Fourth"));
     }
-
-    log4cplus::Logger::shutdown();
 
     return 0;
 }

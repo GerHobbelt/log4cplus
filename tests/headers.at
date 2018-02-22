@@ -11,7 +11,9 @@ m4_foreach_w([HEADER],
   log4cplus/fstreams.h
   log4cplus/hierarchy.h
   log4cplus/hierarchylocker.h
+  log4cplus/initializer.h
   log4cplus/layout.h
+  log4cplus/log4cplus.h
   log4cplus/log4judpappender.h
   log4cplus/logger.h
   log4cplus/loggingmacros.h
@@ -37,11 +39,9 @@ m4_foreach_w([HEADER],
   log4cplus/helpers/fileinfo.h
   log4cplus/helpers/lockfile.h
   log4cplus/helpers/loglog.h
-  log4cplus/helpers/logloguser.h
   log4cplus/helpers/pointer.h
   log4cplus/helpers/property.h
   log4cplus/helpers/queue.h
-  log4cplus/helpers/sleep.h
   log4cplus/helpers/snprintf.h
   log4cplus/helpers/socket.h
   log4cplus/helpers/socketbuffer.h

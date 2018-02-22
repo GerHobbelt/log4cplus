@@ -4,18 +4,18 @@
 // Author:  Vaclav Zeman
 //
 //
-//  Copyright (C) 2012-2015, Vaclav Zeman. All rights reserved.
-//  
+//  Copyright (C) 2012-2017, Vaclav Zeman. All rights reserved.
+//
 //  Redistribution and use in source and binary forms, with or without modifica-
 //  tion, are permitted provided that the following conditions are met:
-//  
+//
 //  1. Redistributions of  source code must  retain the above copyright  notice,
 //     this list of conditions and the following disclaimer.
-//  
+//
 //  2. Redistributions in binary form must reproduce the above copyright notice,
 //     this list of conditions and the following disclaimer in the documentation
 //     and/or other materials provided with the distribution.
-//  
+//
 //  THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED WARRANTIES,
 //  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND
 //  FITNESS  FOR A PARTICULAR  PURPOSE ARE  DISCLAIMED.  IN NO  EVENT SHALL  THE
@@ -214,7 +214,8 @@ CLFSAppender::init (tstring const & logname, unsigned long logsize,
     return;
 
 error:
-    if (data->log_handle != INVALID_HANDLE_VALUE)
+    if (data->log_handle != INVALID_HANDLE_VALUE
+        && data->log_handle)
     {
         CloseHandle (data->log_handle);
         data->log_handle = INVALID_HANDLE_VALUE;
@@ -242,11 +243,10 @@ CLFSAppender::append (spi::InternalLoggingEvent const & ev)
         return;
 
     // TODO: Expose log4cplus' internal TLS to use here.
-    tostringstream oss;    
+    tostringstream oss;
     layout->formatAndAppend(oss, ev);
 
-    tstring str;
-    oss.str ().swap (str);
+    tstring str (oss.str ());
     if ((str.size () + 1) * sizeof (tchar) > data->buffer_size)
         str.resize (data->buffer_size / sizeof (tchar));
 
@@ -279,11 +279,15 @@ BOOL WINAPI DllMain(LOG4CPLUS_DLLMAIN_HINSTANCE,  // handle to DLL module
                     LPVOID)  // reserved
 {
     // Perform actions based on the reason for calling.
-    switch( fdwReason ) 
-    { 
+    switch( fdwReason )
+    {
     case DLL_PROCESS_ATTACH:
     {
-        log4cplus::CLFSAppender::registerAppender ();
+        // We cannot do this here because it causes the thread to deadlock 
+        // when compiled with Visual Studio due to use of C++11 threading 
+        // facilities.
+
+        //log4cplus::CLFSAppender::registerAppender ();
         break;
     }
 

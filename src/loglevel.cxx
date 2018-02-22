@@ -4,7 +4,7 @@
 // Author:  Tad E. Smith
 //
 //
-// Copyright 2001-2015 Tad E. Smith
+// Copyright 2001-2017 Tad E. Smith
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -68,18 +68,13 @@ static
 LogLevel
 defaultStringToLogLevelMethod(const tstring& s)
 {
-#if __cplusplus < 201103L
-    if (s.empty ())
-        return NOT_SET_LOG_LEVEL;
-
-    // The above check is only necessary prior to C++11 standard. Since C++11,
-    // accessing str[0] is always safe as it returns '\0' for empty string.
-#endif
+    // Since C++11, accessing str[0] is always safe as it returns '\0' for
+    // empty string.
 
     switch (s[0])
     {
 #define DEF_LLMATCH(_chr, _logLevel)                 \
-        case _chr:                                   \
+        case LOG4CPLUS_TEXT (_chr):                  \
             if (s == _logLevel ## _STRING)           \
                 return _logLevel ## _LOG_LEVEL;      \
             else                                     \
@@ -101,6 +96,7 @@ defaultStringToLogLevelMethod(const tstring& s)
 }
 
 } // namespace
+
 
 
 //////////////////////////////////////////////////////////////////////////////
@@ -127,24 +123,11 @@ LogLevelManager::~LogLevelManager()
 tstring const &
 LogLevelManager::toString(LogLevel ll) const
 {
-    tstring const * ret;
-    for (LogLevelToStringMethodList::const_iterator it
-        = toStringMethods.begin (); it != toStringMethods.end (); ++it)
+    for (LogLevelToStringMethodRec const & rec : toStringMethods)
     {
-        LogLevelToStringMethodRec const & rec = *it;
-        if (rec.use_1_0)
-        {
-            // Use TLS to store the result to allow us to return
-            // a reference.
-            tstring & ll_str = internal::get_ptd ()->ll_str;
-            rec.func_1_0 (ll).swap (ll_str);
-            ret = &ll_str;
-        }
-        else
-            ret = &rec.func (ll);
-
-        if (! ret->empty ())
-            return *ret;
+        tstring const & ret = rec.func (ll);
+        if (! ret.empty ())
+            return ret;
     }
 
     return UNKNOWN_STRING;
@@ -154,12 +137,11 @@ LogLevelManager::toString(LogLevel ll) const
 LogLevel
 LogLevelManager::fromString(const tstring& arg) const
 {
-    tstring s = helpers::toUpper(arg);
+    tstring const s = helpers::toUpper(arg);
 
-    for (StringToLogLevelMethodList::const_iterator it
-        = fromStringMethods.begin (); it != fromStringMethods.end (); ++it)
+    for (auto func : fromStringMethods)
     {
-        LogLevel ret = (*it) (s);
+        LogLevel ret = func (s);
         if (ret != NOT_SET_LOG_LEVEL)
             return ret;
     }
@@ -175,28 +157,29 @@ LogLevelManager::fromString(const tstring& arg) const
 void
 LogLevelManager::pushToStringMethod(LogLevelToStringMethod newToString)
 {
-    LogLevelToStringMethodRec rec;
-    rec.func = newToString;
-    rec.use_1_0 = false;
-    toStringMethods.insert (toStringMethods.begin (), rec);
-}
-
-
-void
-LogLevelManager::pushToStringMethod(LogLevelToStringMethod_1_0 newToString)
-{
-    LogLevelToStringMethodRec rec;
-    rec.func_1_0 = newToString;
-    rec.use_1_0 = true;
-    toStringMethods.insert (toStringMethods.begin (), rec);
+    toStringMethods.emplace (toStringMethods.begin (), newToString);
 }
 
 
 void
 LogLevelManager::pushFromStringMethod(StringToLogLevelMethod newFromString)
 {
-    fromStringMethods.insert (fromStringMethods.begin (), newFromString);
+    fromStringMethods.push_back (newFromString);
 }
+
+
+//
+//
+//
+
+LogLevelManager::LogLevelToStringMethodRec::LogLevelToStringMethodRec ()
+{ }
+
+
+LogLevelManager::LogLevelToStringMethodRec::LogLevelToStringMethodRec (
+    LogLevelToStringMethod f)
+    : func {f}
+{ }
 
 
 } // namespace log4cplus

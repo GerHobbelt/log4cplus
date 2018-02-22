@@ -1,15 +1,15 @@
-//  Copyright (C) 2009-2015, Vaclav Haisman. All rights reserved.
-//  
+//  Copyright (C) 2009-2017, Vaclav Haisman. All rights reserved.
+//
 //  Redistribution and use in source and binary forms, with or without modifica-
 //  tion, are permitted provided that the following conditions are met:
-//  
+//
 //  1. Redistributions of  source code must  retain the above copyright  notice,
 //     this list of conditions and the following disclaimer.
-//  
+//
 //  2. Redistributions in binary form must reproduce the above copyright notice,
 //     this list of conditions and the following disclaimer in the documentation
 //     and/or other materials provided with the distribution.
-//  
+//
 //  THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED WARRANTIES,
 //  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND
 //  FITNESS  FOR A PARTICULAR  PURPOSE ARE  DISCLAIMED.  IN NO  EVENT SHALL  THE
@@ -36,9 +36,9 @@ namespace log4cplus { namespace thread {
 
 
 Queue::Queue (unsigned len)
-    : mutex (Mutex::DEFAULT)
+    : mutex ()
     , ev_consumer (false)
-    , sem (len, len) 
+    , sem (len, len)
     , flags (DRAIN)
 { }
 
@@ -54,12 +54,12 @@ Queue::put_event (spi::InternalLoggingEvent const & ev)
     try
     {
         ev.gatherThreadSpecificData ();
-        
+
         SemaphoreGuard semguard (sem);
         MutexGuard mguard (mutex);
 
         ret_flags |= flags;
-        
+
         if (flags & EXIT)
         {
             ret_flags &= ~(ERROR_BIT | ERROR_AFTER);
@@ -79,7 +79,9 @@ Queue::put_event (spi::InternalLoggingEvent const & ev)
     }
     catch (std::runtime_error const & e)
     {
-        (void)e;
+        log4cplus::helpers::getLogLog().error(
+            LOG4CPLUS_TEXT("put_event() exception: ")
+            + LOG4CPLUS_C_STR_TO_TSTRING(e.what()));
         return ret_flags;
     }
 
@@ -114,7 +116,9 @@ Queue::signal_exit (bool drain)
     }
     catch (std::runtime_error const & e)
     {
-        (void)e;
+        log4cplus::helpers::getLogLog().error(
+            LOG4CPLUS_TEXT("signal_exit() exception: ")
+            + LOG4CPLUS_C_STR_TO_TSTRING(e.what()));
         ret_flags |= ERROR_BIT;
         return ret_flags;
     }
@@ -174,7 +178,9 @@ Queue::get_events (queue_storage_type * buf)
     }
     catch (std::runtime_error const & e)
     {
-        (void)e;
+        log4cplus::helpers::getLogLog().error(
+            LOG4CPLUS_TEXT("get_events() exception: ")
+            + LOG4CPLUS_C_STR_TO_TSTRING(e.what()));
         ret_flags |= ERROR_BIT;
     }
 

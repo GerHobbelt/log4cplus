@@ -1,15 +1,15 @@
-//  Copyright (C) 2009-2015, Vaclav Haisman. All rights reserved.
-//  
+//  Copyright (C) 2009-2017, Vaclav Haisman. All rights reserved.
+//
 //  Redistribution and use in source and binary forms, with or without modifica-
 //  tion, are permitted provided that the following conditions are met:
-//  
+//
 //  1. Redistributions of  source code must  retain the above copyright  notice,
 //     this list of conditions and the following disclaimer.
-//  
+//
 //  2. Redistributions in binary form must reproduce the above copyright notice,
 //     this list of conditions and the following disclaimer in the documentation
 //     and/or other materials provided with the distribution.
-//  
+//
 //  THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED WARRANTIES,
 //  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND
 //  FITNESS  FOR A PARTICULAR  PURPOSE ARE  DISCLAIMED.  IN NO  EVENT SHALL  THE
@@ -43,9 +43,9 @@ class QueueThread
     : public thread::AbstractThread
 {
 public:
-    QueueThread (AsyncAppenderPtr const &, thread::QueuePtr const &);
+    QueueThread (AsyncAppenderPtr, thread::QueuePtr);
 
-    virtual void run();
+    void run() override;
 
 private:
     AsyncAppenderPtr appenders;
@@ -53,10 +53,9 @@ private:
 };
 
 
-QueueThread::QueueThread (AsyncAppenderPtr const & aai,
-    thread::QueuePtr const & q)
-    : appenders (aai)
-    , queue (q)
+QueueThread::QueueThread (AsyncAppenderPtr aai, thread::QueuePtr q)
+    : appenders (std::move (aai))
+    , queue (std::move (q))
 { }
 
 
@@ -68,8 +67,8 @@ QueueThread::run()
 
     while (true)
     {
-        unsigned flags = queue->get_events (&ev_buf);
-        if (flags & thread::Queue::EVENT)
+        unsigned qflags = queue->get_events (&ev_buf);
+        if (qflags & thread::Queue::EVENT)
         {
             ev_buf_type::const_iterator const ev_buf_end = ev_buf.end ();
             for (ev_buf_type::const_iterator it = ev_buf.begin ();
@@ -78,11 +77,11 @@ QueueThread::run()
         }
 
         if (((thread::Queue::EXIT | thread::Queue::DRAIN
-                | thread::Queue::EVENT) & flags)
+                | thread::Queue::EVENT) & qflags)
             == (thread::Queue::EXIT | thread::Queue::DRAIN
                 | thread::Queue::EVENT))
             continue;
-        else if (thread::Queue::EXIT & flags)
+        else if (thread::Queue::EXIT & qflags)
             break;
     }
 }
@@ -100,6 +99,7 @@ AsyncAppender::AsyncAppender (SharedAppenderPtr const & app,
 
 
 AsyncAppender::AsyncAppender (helpers::Properties const & props)
+    : Appender (props)
 {
     tstring const & appender_name (
         props.getProperty (LOG4CPLUS_TEXT ("Appender")));
@@ -115,14 +115,10 @@ AsyncAppender::AsyncAppender (helpers::Properties const & props)
     spi::AppenderFactory * factory = appender_registry.get (appender_name);
     if (! factory)
     {
-        tstring const err (LOG4CPLUS_TEXT ("AsyncAppender::AsyncAppender()")
-            LOG4CPLUS_TEXT (" - Cannot find AppenderFactory: "));
-        helpers::getLogLog ().error (err + appender_name);
-        // Add at least null appender so that we do not crash unexpectedly
-        // elsewhere.
-        // XXX: What about throwing an exception instead?
-        factory = appender_registry.get (
-            LOG4CPLUS_TEXT ("log4cplus::NullAppender"));
+        helpers::getLogLog ().error (
+            LOG4CPLUS_TEXT ("AsyncAppender::AsyncAppender()")
+            LOG4CPLUS_TEXT (" - Cannot find AppenderFactory: ")
+            + appender_name, true);
     }
 
     helpers::Properties appender_props = props.getPropertySubset (
@@ -155,11 +151,21 @@ AsyncAppender::init_queue_thread (unsigned queue_len)
 void
 AsyncAppender::close ()
 {
-    unsigned ret = queue->signal_exit ();
-    if (ret & (thread::Queue::ERROR_BIT | thread::Queue::ERROR_AFTER))
-        getErrorHandler ()->error (
-            LOG4CPLUS_TEXT ("Error in AsyncAppender::close"));
-    queue_thread->join ();
+    if (queue)
+    {
+        unsigned ret = queue->signal_exit ();
+        if (ret & (thread::Queue::ERROR_BIT | thread::Queue::ERROR_AFTER))
+            getErrorHandler ()->error (
+                LOG4CPLUS_TEXT ("Error in AsyncAppender::close"));
+    }
+
+    if (queue_thread && queue_thread->isRunning ())
+        queue_thread->join ();
+
+    removeAllAppenders();
+
+    queue_thread = nullptr;
+    queue = nullptr;
 }
 
 
@@ -178,8 +184,8 @@ AsyncAppender::append (spi::InternalLoggingEvent const & ev)
             // the events queue.
             queue->signal_exit (false);
             queue_thread->join ();
-            queue_thread = 0;
-            queue = 0;
+            queue_thread = nullptr;
+            queue = nullptr;
             appendLoopOnAppenders (ev);
         }
     }

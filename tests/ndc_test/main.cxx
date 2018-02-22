@@ -1,9 +1,9 @@
-
 #include <log4cplus/logger.h>
 #include <log4cplus/consoleappender.h>
 #include <log4cplus/ndc.h>
 #include <log4cplus/helpers/loglog.h>
 #include <log4cplus/loggingmacros.h>
+#include <log4cplus/initializer.h>
 #include <iostream>
 #include <string>
 
@@ -15,13 +15,13 @@ int
 main()
 {
     cout << "Entering main()..." << endl;
-    log4cplus::initialize ();
+    log4cplus::Initializer initializer;
     LogLog::getLogLog()->setInternalDebugging(true);
     try {
         SharedObjectPtr<Appender> append_1(new ConsoleAppender());
         append_1->setName(LOG4CPLUS_TEXT("First"));
         append_1->setLayout(
-            std::auto_ptr<Layout>(
+            std::unique_ptr<Layout>(
                 new log4cplus::PatternLayout(
                     LOG4CPLUS_TEXT ("%-5p %c <%x> - %m%n"))));
         Logger::getRoot().addAppender(append_1);
@@ -55,4 +55,3 @@ main()
     cout << "Exiting main()..." << endl;
     return 0;
 }
-

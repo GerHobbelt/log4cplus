@@ -4,7 +4,7 @@
 // Author:  Tad E. Smith
 //
 //
-// Copyright 2001-2015 Tad E. Smith
+// Copyright 2001-2017 Tad E. Smith
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -35,16 +35,11 @@ void
 formatRelativeTimestamp (log4cplus::tostream & output,
     log4cplus::spi::InternalLoggingEvent const & event)
 {
-    helpers::Time const rel_time
+    auto const duration
         = event.getTimestamp () - getTTCCLayoutTimeBase ();
-    tchar const old_fill = output.fill ();
-    helpers::time_t const sec = rel_time.sec ();
-
-    if (sec != 0)
-        output << sec << std::setfill (LOG4CPLUS_TEXT ('0')) << std::setw (3);
-
-    output << rel_time.usec () / 1000;
-    output.fill (old_fill);
+    output << helpers::chrono::duration_cast<
+                  helpers::chrono::duration<long long, std::milli>>(
+                      duration).count ();
 }
 
 //
@@ -138,7 +133,7 @@ TTCCLayout::formatAndAppend(log4cplus::tostream& output,
      if (dateFormat.empty ())
          formatRelativeTimestamp (output, event);
      else
-         output << event.getTimestamp().getFormattedTime(dateFormat,
+         output << helpers::getFormattedTime(dateFormat, event.getTimestamp(),
              use_gmtime);
 
      if (getThreadPrinting ())

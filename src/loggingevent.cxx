@@ -4,7 +4,7 @@
 // Author:  Tad E. Smith
 //
 //
-// Copyright 2003-2015 Tad E. Smith
+// Copyright 2003-2017 Tad E. Smith
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -42,9 +42,9 @@ InternalLoggingEvent::InternalLoggingEvent(const log4cplus::tstring& logger,
     , ndc()
     , mdc()
     , thread()
-    , timestamp(log4cplus::helpers::Time::gettimeofday())
+    , timestamp(log4cplus::helpers::now ())
     , file(filename
-        ? LOG4CPLUS_C_STR_TO_TSTRING(filename) 
+        ? LOG4CPLUS_C_STR_TO_TSTRING(filename)
         : log4cplus::tstring())
     , function (function_
         ? LOG4CPLUS_C_STR_TO_TSTRING(function_)
@@ -82,6 +82,31 @@ InternalLoggingEvent::InternalLoggingEvent(const log4cplus::tstring& logger,
 }
 
 
+InternalLoggingEvent::InternalLoggingEvent(const log4cplus::tstring& logger,
+    LogLevel loglevel, const log4cplus::tstring& ndc_,
+    MappedDiagnosticContextMap const & mdc_, const log4cplus::tstring& message_,
+    const log4cplus::tstring& thread_, const log4cplus::tstring& thread2_,
+    log4cplus::helpers::Time time, const log4cplus::tstring& file_, int line_,
+    const log4cplus::tstring & function_)
+    : message(message_)
+    , loggerName(logger)
+    , ll(loglevel)
+    , ndc(ndc_)
+    , mdc(mdc_)
+    , thread(thread_)
+    , thread2(thread2_)
+    , timestamp(time)
+    , file(file_)
+    , function (function_)
+    , line(line_)
+    , threadCached(true)
+    , thread2Cached(true)
+    , ndcCached(true)
+    , mdcCached(true)
+{
+}
+
+
 InternalLoggingEvent::InternalLoggingEvent ()
     : ll (NOT_SET_LOG_LEVEL)
     , function ()
@@ -101,6 +126,7 @@ InternalLoggingEvent::InternalLoggingEvent(
     , ndc(rhs.getNDC())
     , mdc(rhs.getMDCCopy())
     , thread(rhs.getThread())
+    , thread2(rhs.getThread2())
     , timestamp(rhs.getTimestamp())
     , file(rhs.getFile())
     , function(rhs.getFunction())
@@ -150,7 +176,7 @@ InternalLoggingEvent::setLoggingEvent (const log4cplus::tstring & logger,
     loggerName = logger;
     ll = loglevel;
     message = msg;
-    timestamp = helpers::Time::gettimeofday();
+    timestamp = helpers::now ();
 
     if (filename)
         file = LOG4CPLUS_C_STR_TO_TSTRING (filename);
@@ -187,7 +213,7 @@ InternalLoggingEvent::setFunction (log4cplus::tstring const & func)
 }
 
 
-const log4cplus::tstring& 
+const log4cplus::tstring&
 InternalLoggingEvent::getMessage() const
 {
     return message;
@@ -202,10 +228,10 @@ InternalLoggingEvent::getType() const
 
 
 
-std::auto_ptr<InternalLoggingEvent>
+std::unique_ptr<InternalLoggingEvent>
 InternalLoggingEvent::clone() const
 {
-    std::auto_ptr<InternalLoggingEvent> tmp(new InternalLoggingEvent(*this));
+    std::unique_ptr<InternalLoggingEvent> tmp(new InternalLoggingEvent(*this));
     return tmp;
 }
 
@@ -258,6 +284,7 @@ InternalLoggingEvent::swap (InternalLoggingEvent & other)
     swap (function, other.function);
     swap (line, other.line);
     swap (threadCached, other.threadCached);
+    swap (thread2Cached, other.thread2Cached);
     swap (ndcCached, other.ndcCached);
 }
 

@@ -4,18 +4,18 @@
 // Author:  Vaclav Zeman
 //
 //
-//  Copyright (C) 2012-2015, Vaclav Zeman. All rights reserved.
-//  
+//  Copyright (C) 2012-2017, Vaclav Zeman. All rights reserved.
+//
 //  Redistribution and use in source and binary forms, with or without modifica-
 //  tion, are permitted provided that the following conditions are met:
-//  
+//
 //  1. Redistributions of  source code must  retain the above copyright  notice,
 //     this list of conditions and the following disclaimer.
-//  
+//
 //  2. Redistributions in binary form must reproduce the above copyright notice,
 //     this list of conditions and the following disclaimer in the documentation
 //     and/or other materials provided with the distribution.
-//  
+//
 //  THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED WARRANTIES,
 //  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND
 //  FITNESS  FOR A PARTICULAR  PURPOSE ARE  DISCLAIMED.  IN NO  EVENT SHALL  THE
@@ -79,10 +79,10 @@ struct COMInitializer
 {
     explicit COMInitializer (DWORD apartment_model = COINIT_APARTMENTTHREADED,
         HRESULT hr = S_OK)
-        : uninit ((hr = CoInitializeEx (NULL, apartment_model)
+        : uninit ((hr = CoInitializeEx (nullptr, apartment_model)
             , hr == S_OK || hr == S_FALSE))
     { }
-    
+
     ~COMInitializer ()
     {
         if (uninit)
@@ -121,8 +121,8 @@ public:
     run ()
     {
         COMInitializer com_init (COINIT_MULTITHREADED);
-        
-        HRESULT hr = CoCreateInstance (CLSID_SpVoice, NULL,
+
+        HRESULT hr = CoCreateInstance (CLSID_SpVoice, nullptr,
             CLSCTX_ALL, IID_ISpVoice, reinterpret_cast<void **>(&ispvoice));
         if (FAILED (hr))
             loglog_com_error (
@@ -216,10 +216,10 @@ MSTTSAppender::MSTTSAppender (helpers::Properties const & props)
     if (has_rate)
         rate = (std::max) (-10l, (std::min) (rate, 10l));
 
-    bool async;
+    bool async = false;
     async = props.getBool (async, LOG4CPLUS_TEXT ("Async")) && async;
 
-    bool speak_punc;
+    bool speak_punc = false;
     speak_punc = props.getBool (speak_punc, LOG4CPLUS_TEXT ("SpeakPunc"))
         && speak_punc;
 
@@ -238,7 +238,7 @@ void
 MSTTSAppender::init (long const * rate, unsigned long const * volume,
     bool speak_punc, bool async)
 {
-    data->speech_thread = 
+    data->speech_thread =
         helpers::SharedObjectPtr<SpeechObjectThread> (
             new SpeechObjectThread (data->ispvoice));
     data->speech_thread->start ();
@@ -294,7 +294,7 @@ MSTTSAppender::append (spi::InternalLoggingEvent const & ev)
 
     COMInitializer com_init;
     HRESULT hr = data->ispvoice->Speak (
-        helpers::towstring (oss.str ()).c_str (), flags, NULL);
+        helpers::towstring (oss.str ()).c_str (), flags, nullptr);
     if (FAILED (hr))
         loglog_com_error (LOG4CPLUS_TEXT ("Speak failed"), hr);
 }
@@ -318,11 +318,15 @@ BOOL WINAPI DllMain(LOG4CPLUS_DLLMAIN_HINSTANCE,  // handle to DLL module
                     LPVOID)  // reserved
 {
     // Perform actions based on the reason for calling.
-    switch( fdwReason ) 
-    { 
+    switch( fdwReason )
+    {
     case DLL_PROCESS_ATTACH:
     {
-        log4cplus::MSTTSAppender::registerAppender ();
+        // We cannot do this here because it causes the thread to deadlock 
+        // when compiled with Visual Studio due to use of C++11 threading 
+        // facilities.
+
+        //log4cplus::MSTTSAppender::registerAppender ();
         break;
     }
 

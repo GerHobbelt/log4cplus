@@ -1,14 +1,14 @@
-
 #include <log4cplus/consoleappender.h>
 #include <log4cplus/layout.h>
 #include <log4cplus/logger.h>
 #include <log4cplus/ndc.h>
 #include <log4cplus/helpers/loglog.h>
 #include <log4cplus/thread/threads.h>
-#include <log4cplus/helpers/sleep.h>
 #include <log4cplus/streams.h>
 #include <log4cplus/loggingmacros.h>
 #include <log4cplus/tracelogger.h>
+#include <log4cplus/helpers/property.h>
+#include <log4cplus/initializer.h>
 #include <exception>
 #include <iostream>
 #include <string>
@@ -20,14 +20,15 @@ using namespace log4cplus::helpers;
 using namespace log4cplus::thread;
 
 
-#define MILLIS_TO_NANOS 1000
 #define NUM_THREADS 4
 #define NUM_LOOPS 10
 
-class SlowObject {
+class SlowObject
+    : public log4cplus::helpers::SharedObject
+{
 public:
-    SlowObject() 
-        : logger(Logger::getInstance(LOG4CPLUS_TEXT("SlowObject"))) 
+    SlowObject()
+        : logger(Logger::getInstance(LOG4CPLUS_TEXT("SlowObject")))
     {
         logger.setLogLevel(TRACE_LOG_LEVEL);
     }
@@ -38,7 +39,7 @@ public:
         {
             log4cplus::thread::MutexGuard guard (mutex);
             LOG4CPLUS_INFO(logger, LOG4CPLUS_TEXT("Actually doing something..."));
-            sleep(0, 75 * MILLIS_TO_NANOS);
+            std::this_thread::sleep_for (std::chrono::milliseconds (75));
             LOG4CPLUS_INFO_FMT(logger,
                 LOG4CPLUS_TEXT (
                     "Actually doing something...%d, %d, %d, %ls...DONE"),
@@ -56,60 +57,68 @@ private:
 };
 
 
+using SlowObjectPtr = log4cplus::helpers::SharedObjectPtr<SlowObject>;
+
+
 class TestThread : public AbstractThread {
 public:
-    TestThread (tstring const & n, SlowObject * so) 
+    TestThread (tstring const & n, SlowObjectPtr so)
         : name(n)
-        , slow(so)
-        , logger(Logger::getInstance(LOG4CPLUS_TEXT("test.TestThread"))) 
+        , slow(std::move (so))
+        , logger(Logger::getInstance(LOG4CPLUS_TEXT("test.TestThread")))
      { }
 
     virtual void run();
 
 private:
     tstring name;
-    SlowObject * slow;
+    SlowObjectPtr slow;
     Logger logger;
 };
 
 
+using TestThreadPtr = log4cplus::helpers::SharedObjectPtr<TestThread>;
+
+
 int
-main() 
+main()
 {
-    log4cplus::initialize();
+    log4cplus::Initializer initializer;
+
     try
-    {    
-        auto_ptr<SlowObject> slowObject(new SlowObject());
+    {
+        SlowObjectPtr slowObject(new SlowObject());
         log4cplus::helpers::LogLog::getLogLog()->setInternalDebugging(true);
         Logger logger = Logger::getInstance(LOG4CPLUS_TEXT("main"));
         Logger::getRoot().setLogLevel(INFO_LOG_LEVEL);
         LogLevel ll = logger.getLogLevel();
         tcout << "main Priority: " << getLogLevelManager().toString(ll) << endl;
 
-        helpers::SharedObjectPtr<Appender> append_1(new ConsoleAppender());
-        append_1->setLayout( std::auto_ptr<Layout>(new log4cplus::TTCCLayout()) );
+        log4cplus::helpers::Properties props;
+        props.setProperty(LOG4CPLUS_TEXT ("AsyncAppend"),
+            LOG4CPLUS_TEXT ("true"));
+        helpers::SharedObjectPtr<Appender> append_1(new ConsoleAppender(props));
+        append_1->setLayout(std::unique_ptr<Layout>(new log4cplus::TTCCLayout));
         Logger::getRoot().addAppender(append_1);
         append_1->setName(LOG4CPLUS_TEXT("cout"));
+        append_1 = 0;
 
-	    append_1 = 0;
-
-        log4cplus::helpers::SharedObjectPtr<TestThread> threads[NUM_THREADS];
+        TestThreadPtr threads[NUM_THREADS];
         int i = 0;
         for(i=0; i<NUM_THREADS; ++i) {
             tostringstream s;
             s << "Thread-" << i;
-            threads[i] = new TestThread(s.str(), slowObject.get());
+            threads[i] = new TestThread(s.str(), slowObject);
         }
 
         for(i=0; i<NUM_THREADS; ++i) {
             threads[i]->start();
         }
+
         LOG4CPLUS_DEBUG(logger, "All Threads started...");
 
         for(i=0; i<NUM_THREADS; ++i) {
-            while(threads[i]->isRunning()) {
-                sleep(0, 200 * MILLIS_TO_NANOS);
-            }
+            threads[i]->join ();
         }
         LOG4CPLUS_INFO(logger, "Exiting main()...");
     }
@@ -120,7 +129,6 @@ main()
         LOG4CPLUS_FATAL(Logger::getRoot(), "main()- Exception occured");
     }
 
-    log4cplus::Logger::shutdown();
     return 0;
 }
 
@@ -128,6 +136,9 @@ main()
 void
 TestThread::run()
 {
+    // Test is here just to test initializer from multiple threads.
+    log4cplus::Initializer initializer;
+
     try {
         LOG4CPLUS_WARN(logger, name + LOG4CPLUS_TEXT(" TestThread.run()- Starting..."));
         NDC& ndc = getNDC();

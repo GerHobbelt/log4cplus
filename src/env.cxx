@@ -1,15 +1,15 @@
-//  Copyright (C) 2010-2015, Vaclav Haisman. All rights reserved.
-//  
+//  Copyright (C) 2010-2017, Vaclav Haisman. All rights reserved.
+//
 //  Redistribution and use in source and binary forms, with or without modifica-
 //  tion, are permitted provided that the following conditions are met:
-//  
+//
 //  1. Redistributions of  source code must  retain the above copyright  notice,
 //     this list of conditions and the following disclaimer.
-//  
+//
 //  2. Redistributions in binary form must reproduce the above copyright notice,
 //     this list of conditions and the following disclaimer in the documentation
 //     and/or other materials provided with the distribution.
-//  
+//
 //  THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED WARRANTIES,
 //  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND
 //  FITNESS  FOR A PARTICULAR  PURPOSE ARE  DISCLAIMED.  IN NO  EVENT SHALL  THE
@@ -55,6 +55,7 @@
 #include <algorithm>
 #include <functional>
 #include <stdexcept>
+#include <memory>
 
 
 namespace log4cplus { namespace internal {
@@ -66,10 +67,71 @@ tstring const dir_sep(LOG4CPLUS_TEXT("/"));
 #endif
 
 
+namespace
+{
+
+struct free_deleter
+{
+    void
+    operator () (void * ptr) const
+    {
+        std::free(ptr);
+    }
+};
+
+} // namespace
+
+
+#if defined (_WIN32) && defined (_MSC_VER)
+static inline
+errno_t
+dup_env_var (wchar_t ** buf, std::size_t * buf_len, wchar_t const * name)
+{
+    return _wdupenv_s (buf, buf_len, name);
+}
+
+
+static inline
+errno_t
+dup_env_var (char ** buf, std::size_t * buf_len, char const * name)
+{
+    return _dupenv_s (buf, buf_len, name);
+}
+
+#endif
+
 bool
 get_env_var (tstring & value, tstring const & name)
 {
-#if defined (_WIN32) && defined (UNICODE)
+#if defined (_WIN32) && defined (_MSC_VER)
+    tchar * buf = nullptr;
+    std::size_t buf_len = 0;
+    errno_t eno = dup_env_var (&buf, &buf_len, name.c_str ());
+    std::unique_ptr<tchar, free_deleter> val (buf);
+    switch (eno)
+    {
+    case 0:
+        // Success of the _dupenv_s() call but the variable might still
+        // not be defined.
+        if (buf)
+            value.assign (buf, buf_len - 1);
+
+        break;
+
+    case ENOMEM:
+        helpers::getLogLog ().error (
+            LOG4CPLUS_TEXT ("_dupenv_s failed to allocate memory"));
+        throw std::bad_alloc ();
+
+    default:
+        helpers::getLogLog().error(
+            LOG4CPLUS_TEXT ("_dupenv_s failed. Error: ")
+            + helpers::convertIntegerToString (eno), true);
+    }
+
+    return !! buf;
+
+#elif defined (_WIN32) && defined (UNICODE)
     tchar const * val = _wgetenv (name.c_str ());
     if (val)
         value = val;
@@ -142,12 +204,15 @@ parse_bool (bool & val, tstring const & str)
 }
 
 
-namespace 
+namespace
 {
 
 struct path_sep_comp
     : public std::unary_function<tchar, bool>
 {
+    path_sep_comp ()
+    { }
+
     bool
     operator () (tchar ch) const
     {
@@ -156,17 +221,6 @@ struct path_sep_comp
 #else
         return ch == LOG4CPLUS_TEXT ('/');
 #endif
-    }
-};
-
-
-struct is_empty_string
-    : public std::unary_function<tstring const &, bool>
-{
-    bool
-    operator () (tstring const & str) const
-    {
-        return str.empty ();
     }
 };
 
@@ -180,7 +234,7 @@ remove_empty (Cont & cont, std::size_t special)
 {
     cont.erase (
         std::remove_if (cont.begin () + special, cont.end (),
-            is_empty_string ()),
+            [](tstring const & str) { return str.empty (); }),
         cont.end ());
 }
 
@@ -193,19 +247,17 @@ is_drive_letter (tchar ch)
     tchar dl = helpers::toUpper (ch);
     return LOG4CPLUS_TEXT ('A') <= dl && dl <= LOG4CPLUS_TEXT ('Z');
 }
-#endif // _WIN32
 
-#if defined (_WIN32)
+
 static
 tstring
 get_drive_cwd (tchar drive)
 {
-    tstring path;
-
     drive = helpers::toUpper (drive);
-    
+
 #ifdef UNICODE
-    wchar_t * cstr = _wgetdcwd (drive - LOG4CPLUS_TEXT ('A') + 1, 0, 0x7FFF);
+    std::unique_ptr<wchar_t, free_deleter> cstr (
+        _wgetdcwd(drive - LOG4CPLUS_TEXT('A') + 1, 0, 0x7FFF));
     if (! cstr)
     {
         int const eno = errno;
@@ -214,9 +266,10 @@ get_drive_cwd (tchar drive)
             + helpers::convertIntegerToString (eno),
             true);
     }
-   
+
 #else
-    char * cstr = _getdcwd (drive - LOG4CPLUS_TEXT ('A') + 1, 0, 0x7FFF);
+    std::unique_ptr<char, free_deleter> cstr(
+        _getdcwd (drive - LOG4CPLUS_TEXT ('A') + 1, 0, 0x7FFF));
     if (! cstr)
     {
         int const eno = errno;
@@ -228,18 +281,7 @@ get_drive_cwd (tchar drive)
 
 #endif
 
-    try
-    {
-        path.assign (cstr);
-    }
-    catch (...)
-    {
-        std::free (cstr);
-        throw;
-    }
-
-    std::free (cstr);
-    return path;
+    return cstr.get ();
 }
 
 #endif
@@ -345,7 +387,7 @@ expand_drive_relative_path (Container & components, std::size_t rel_path_index,
 
     // Move the saved relative path into place.
 
-    components[rel_path_index].swap (relative_path_first_component);
+    components[rel_path_index] = std::move (relative_path_first_component);
 
     // Insert the current working directory for a drive.
 
@@ -389,7 +431,7 @@ split_path (std::vector<tstring> & components, std::size_t & special,
     // First split the path into individual components separated by
     // system specific separator.
 
-    path_sep_comp is_sep;
+    const path_sep_comp is_sep;
     split_into_components (components, path, is_sep);
 
     // Try to recognize the path to find out how many initial components
@@ -570,7 +612,7 @@ loglog_make_directory_result (helpers::LogLog & loglog, tstring const & path,
     if (ret == 0)
     {
         loglog.debug (
-            LOG4CPLUS_TEXT("Created directory ") 
+            LOG4CPLUS_TEXT("Created directory ")
             + path);
     }
     else

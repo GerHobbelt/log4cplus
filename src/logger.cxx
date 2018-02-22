@@ -4,7 +4,7 @@
 // Author:  Tad E. Smith
 //
 //
-// Copyright 2001-2015 Tad E. Smith
+// Copyright 2001-2017 Tad E. Smith
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,10 +30,10 @@ namespace log4cplus
 {
 
 
-Logger 
+Logger
 DefaultLoggerFactory::makeNewLoggerInstance (const log4cplus::tstring & name,
     Hierarchy& h)
-{ 
+{
     return Logger (new spi::LoggerImpl (name, h));
 }
 
@@ -42,53 +42,53 @@ DefaultLoggerFactory::makeNewLoggerInstance (const log4cplus::tstring & name,
 // static Logger Methods
 //////////////////////////////////////////////////////////////////////////////
 //
-Hierarchy & 
+Hierarchy &
 Logger::getDefaultHierarchy ()
 {
     return log4cplus::getDefaultHierarchy ();
 }
 
 
-bool 
-Logger::exists (const log4cplus::tstring & name) 
+bool
+Logger::exists (const log4cplus::tstring & name)
 {
-    return getDefaultHierarchy().exists(name); 
+    return getDefaultHierarchy().exists(name);
 }
 
 
 LoggerList
-Logger::getCurrentLoggers () 
+Logger::getCurrentLoggers ()
 {
     return getDefaultHierarchy ().getCurrentLoggers ();
 }
 
 
-Logger 
-Logger::getInstance (const log4cplus::tstring& name) 
-{ 
-    return getDefaultHierarchy().getInstance(name); 
+Logger
+Logger::getInstance (const log4cplus::tstring& name)
+{
+    return getDefaultHierarchy().getInstance(name);
 }
 
 
-Logger 
+Logger
 Logger::getInstance (const log4cplus::tstring& name,
     spi::LoggerFactory& factory)
-{ 
-    return getDefaultHierarchy().getInstance(name, factory); 
+{
+    return getDefaultHierarchy().getInstance(name, factory);
 }
 
 
-Logger 
-Logger::getRoot () 
-{ 
-    return getDefaultHierarchy ().getRoot (); 
+Logger
+Logger::getRoot ()
+{
+    return getDefaultHierarchy ().getRoot ();
 }
 
 
-void 
-Logger::shutdown () 
-{ 
-    getDefaultHierarchy ().shutdown (); 
+void
+Logger::shutdown ()
+{
+    getDefaultHierarchy ().shutdown ();
 }
 
 
@@ -97,12 +97,11 @@ Logger::shutdown ()
 // Logger ctors and dtor
 //////////////////////////////////////////////////////////////////////////////
 
-Logger::Logger ()
-    : value (0)
+Logger::Logger () LOG4CPLUS_NOEXCEPT
 { }
 
 
-Logger::Logger (spi::LoggerImpl * ptr)
+Logger::Logger (spi::LoggerImpl * ptr) LOG4CPLUS_NOEXCEPT
     : value (ptr)
 {
     if (value)
@@ -110,7 +109,7 @@ Logger::Logger (spi::LoggerImpl * ptr)
 }
 
 
-Logger::Logger (const Logger& rhs)
+Logger::Logger (const Logger& rhs) LOG4CPLUS_NOEXCEPT
     : spi::AppenderAttachable (rhs)
     , value (rhs.value)
 {
@@ -120,33 +119,30 @@ Logger::Logger (const Logger& rhs)
 
 
 Logger &
-Logger::operator = (const Logger& rhs)
+Logger::operator = (const Logger& rhs) LOG4CPLUS_NOEXCEPT
 {
     Logger (rhs).swap (*this);
     return *this;
 }
 
 
-#if defined (LOG4CPLUS_HAVE_RVALUE_REFS)
-Logger::Logger (Logger && rhs)
+Logger::Logger (Logger && rhs) LOG4CPLUS_NOEXCEPT
     : spi::AppenderAttachable (std::move (rhs))
-    , value (std::move (rhs.value))
+    , value (rhs.value)
 {
-    rhs.value = 0;
+    rhs.value = nullptr;
 }
 
 
 Logger &
-Logger::operator = (Logger && rhs)
+Logger::operator = (Logger && rhs) LOG4CPLUS_NOEXCEPT
 {
     Logger (std::move (rhs)).swap (*this);
     return *this;
 }
 
-#endif
 
-
-Logger::~Logger () 
+Logger::~Logger ()
 {
     if (value)
         value->removeReference ();
@@ -158,63 +154,63 @@ Logger::~Logger ()
 //////////////////////////////////////////////////////////////////////////////
 
 void
-Logger::swap (Logger & other)
+Logger::swap (Logger & other) LOG4CPLUS_NOEXCEPT
 {
     std::swap (value, other.value);
 }
 
 
 Logger
-Logger::getParent () const 
+Logger::getParent () const
 {
     if (value->parent)
         return Logger (value->parent.get ());
     else
     {
         helpers::getLogLog().error(
-            LOG4CPLUS_TEXT("********* This logger has no parent: "
-            + getName()));
+            LOG4CPLUS_TEXT("********* This logger has no parent: ")
+            + getName());
         return *this;
     }
 }
 
 
-void 
+void
 Logger::addAppender (SharedAppenderPtr newAppender)
 {
     value->addAppender(newAppender);
 }
 
 
-SharedAppenderPtrList 
+SharedAppenderPtrList
 Logger::getAllAppenders ()
 {
     return value->getAllAppenders();
 }
 
 
-SharedAppenderPtr 
+SharedAppenderPtr
 Logger::getAppender (const log4cplus::tstring& name)
 {
     return value->getAppender (name);
 }
 
 
-void 
+void
 Logger::removeAllAppenders ()
 {
     value->removeAllAppenders ();
 }
 
 
-void 
+void
 Logger::removeAppender (SharedAppenderPtr appender)
 {
     value->removeAppender(appender);
 }
 
 
-void 
+void
 Logger::removeAppender (const log4cplus::tstring& name)
 {
     value->removeAppender (name);
@@ -225,7 +221,7 @@ void
 Logger::assertion (bool assertionVal, const log4cplus::tstring& msg) const
 {
     if (! assertionVal)
-        log (FATAL_LOG_LEVEL, msg, 0, -1);
+        log (FATAL_LOG_LEVEL, msg, nullptr, -1);
 }
 
 
@@ -303,7 +299,7 @@ Logger::setLogLevel (LogLevel ll)
 
 Hierarchy &
 Logger::getHierarchy () const
-{ 
+{
     return value->getHierarchy ();
 }
 
@@ -324,7 +320,7 @@ Logger::getAdditivity () const
 
 void
 Logger::setAdditivity (bool additive)
-{ 
+{
     value->setAdditivity (additive);
 }
 

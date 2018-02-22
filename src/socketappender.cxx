@@ -4,7 +4,7 @@
 // Author:  Tad E. Smith
 //
 //
-// Copyright 2003-2015 Tad E. Smith
+// Copyright 2003-2017 Tad E. Smith
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,13 +19,14 @@
 // limitations under the License.
 
 #include <cstdlib>
+#include <stdexcept>
 #include <log4cplus/socketappender.h>
 #include <log4cplus/layout.h>
 #include <log4cplus/spi/loggingevent.h>
 #include <log4cplus/helpers/loglog.h>
-#include <log4cplus/helpers/sleep.h>
 #include <log4cplus/helpers/property.h>
 #include <log4cplus/thread/syncprims-pub-impl.h>
+#include <log4cplus/internal/internal.h>
 
 
 namespace log4cplus {
@@ -38,10 +39,11 @@ int const LOG4CPLUS_MESSAGE_VERSION = 3;
 //////////////////////////////////////////////////////////////////////////////
 
 SocketAppender::SocketAppender(const tstring& host_,
-    unsigned short port_, const tstring& serverName_)
-: host(host_),
-  port(port_),
-  serverName(serverName_)
+    unsigned short port_, const tstring& serverName_, bool ipv6_ /*= false*/)
+    : host(host_)
+    , port(port_)
+    , serverName(serverName_)
+    , ipv6(ipv6_)
 {
     openSocket();
     initConnector ();
@@ -56,6 +58,7 @@ SocketAppender::SocketAppender(const helpers::Properties & properties)
     host = properties.getProperty( LOG4CPLUS_TEXT("host") );
     properties.getUInt (port, LOG4CPLUS_TEXT("port"));
     serverName = properties.getProperty( LOG4CPLUS_TEXT("ServerName") );
+    properties.getBool(ipv6, LOG4CPLUS_TEXT("IPv6"));
 
     openSocket();
     initConnector ();
@@ -74,7 +77,7 @@ SocketAppender::~SocketAppender()
 // SocketAppender public methods
 //////////////////////////////////////////////////////////////////////////////
 
-void 
+void
 SocketAppender::close()
 {
     helpers::getLogLog().debug(
@@ -98,7 +101,7 @@ void
 SocketAppender::openSocket()
 {
     if(!socket.isOpen()) {
-        socket = helpers::Socket(host, static_cast<unsigned short>(port));
+        socket = helpers::Socket(host, static_cast<unsigned short>(port), false, ipv6);
     }
 }
 
@@ -136,16 +139,28 @@ SocketAppender::append(const spi::InternalLoggingEvent& event)
     }
 #endif
 
-    helpers::SocketBuffer buffer(LOG4CPLUS_MAX_MESSAGE_SIZE - sizeof(unsigned int));
-    convertToBuffer (buffer, event, serverName);
-    helpers::SocketBuffer msgBuffer(LOG4CPLUS_MAX_MESSAGE_SIZE);
+    helpers::SocketBuffer msgBuffer(LOG4CPLUS_MAX_MESSAGE_SIZE
+        - sizeof (unsigned int));
 
-    msgBuffer.appendInt(static_cast<unsigned>(buffer.getSize()));
-    msgBuffer.appendBuffer(buffer);
+    try
+    {
+        convertToBuffer (msgBuffer, event, serverName);
+    }
+    catch (std::runtime_error const &)
+    {
+        return;
+    }
 
-    bool ret = socket.write(msgBuffer);
+    helpers::SocketBuffer buffer(sizeof(unsigned int));
+    buffer.appendInt(static_cast<unsigned>(msgBuffer.getSize()));
+
+    bool ret = helpers::Socket::write(socket, buffer, msgBuffer);
     if (! ret)
     {
+        helpers::getLogLog().error(
+            LOG4CPLUS_TEXT(
+                "SocketAppender::append()- Write failed"));
+
 #if ! defined (LOG4CPLUS_SINGLE_THREADED)
         connected = false;
         connector->trigger ();
@@ -210,8 +225,10 @@ convertToBuffer(SocketBuffer & buffer,
     buffer.appendString(event.getNDC());
     buffer.appendString(event.getMessage());
     buffer.appendString(event.getThread());
-    buffer.appendInt( static_cast<unsigned int>(event.getTimestamp().sec()) );
-    buffer.appendInt( static_cast<unsigned int>(event.getTimestamp().usec()) );
+    buffer.appendInt(
+        static_cast<unsigned int>(to_time_t (event.getTimestamp())));
+    buffer.appendInt(
+        static_cast<unsigned int>(microseconds_part(event.getTimestamp())));
     buffer.appendString(event.getFile());
     buffer.appendInt(event.getLine());
     buffer.appendString(event.getFunction());
@@ -251,7 +268,8 @@ readFromBuffer(SocketBuffer& buffer)
 
     // TODO: Pass MDC through.
     spi::InternalLoggingEvent ev (loggerName, ll, ndc,
-        MappedDiagnosticContextMap (), message, thread, Time(sec, usec), file,
+        MappedDiagnosticContextMap (), message, thread, internal::empty_str,
+        from_time_t (sec) + chrono::microseconds (usec), file,
         line, function);
     return ev;
 }

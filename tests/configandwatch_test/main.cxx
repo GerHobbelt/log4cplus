@@ -1,10 +1,11 @@
-
 #include <log4cplus/logger.h>
 #include <log4cplus/configurator.h>
 #include <log4cplus/helpers/loglog.h>
 #include <log4cplus/helpers/stringhelper.h>
-#include <log4cplus/helpers/sleep.h>
+#include <log4cplus/helpers/fileinfo.h>
 #include <log4cplus/loggingmacros.h>
+#include <log4cplus/initializer.h>
+#include <thread>
 
 using namespace std;
 using namespace log4cplus;
@@ -27,18 +28,34 @@ printMsgs(Logger& logger)
 }
 
 
+log4cplus::tstring
+getPropertiesFileArgument (int argc, char * argv[])
+{
+    if (argc >= 2)
+    {
+        char const * arg = argv[1];
+        log4cplus::tstring file = LOG4CPLUS_C_STR_TO_TSTRING (arg);
+        log4cplus::helpers::FileInfo fi;
+        if (getFileInfo (&fi, file) == 0)
+            return file;
+    }
+
+    return LOG4CPLUS_TEXT ("log4cplus.properties");
+}
+
 
 int
-main()
+main(int argc, char * argv[])
 {
     tcout << LOG4CPLUS_TEXT("Entering main()...") << endl;
-    log4cplus::initialize ();
+    log4cplus::Initializer initializer;
+
     LogLog::getLogLog()->setInternalDebugging(true);
     Logger root = Logger::getRoot();
-    try 
+    try
     {
         ConfigureAndWatchThread configureThread(
-            LOG4CPLUS_TEXT("log4cplus.properties"), 5 * 1000);
+            getPropertiesFileArgument (argc, argv), 5 * 1000);
 
         LOG4CPLUS_WARN(root, "Testing....");
 
@@ -46,7 +63,7 @@ main()
             printMsgs(log_1);
             printMsgs(log_2);
             printMsgs(log_3);
-	        log4cplus::helpers::sleep(1);
+            std::this_thread::sleep_for (std::chrono::seconds (1));
         }
     }
     catch(...) {
@@ -57,4 +74,3 @@ main()
     tcout << LOG4CPLUS_TEXT("Exiting main()...") << endl;
     return 0;
 }
-

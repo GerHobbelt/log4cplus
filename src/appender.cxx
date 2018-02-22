@@ -4,7 +4,7 @@
 // Author:  Tad E. Smith
 //
 //
-// Copyright 2003-2015 Tad E. Smith
+// Copyright 2003-2017 Tad E. Smith
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -49,7 +49,7 @@ ErrorHandler::~ErrorHandler()
 
 
 ///////////////////////////////////////////////////////////////////////////////
-// log4cplus::OnlyOnceErrorHandler 
+// log4cplus::OnlyOnceErrorHandler
 ///////////////////////////////////////////////////////////////////////////////
 
 OnlyOnceErrorHandler::OnlyOnceErrorHandler()
@@ -85,11 +85,15 @@ OnlyOnceErrorHandler::reset()
 ///////////////////////////////////////////////////////////////////////////////
 
 Appender::Appender()
- : layout(new SimpleLayout()),
-   name( LOG4CPLUS_TEXT("") ),
+ : layout(new SimpleLayout),
+   name(internal::empty_str),
    threshold(NOT_SET_LOG_LEVEL),
    errorHandler(new OnlyOnceErrorHandler),
    useLockFile(false),
+   async(false),
+#if ! defined (LOG4CPLUS_SINGLE_THREADED)
+   in_flight(0),
+#endif
    closed(false)
 {
 }
@@ -97,11 +101,15 @@ Appender::Appender()
 
 
 Appender::Appender(const log4cplus::helpers::Properties & properties)
-    : layout(new SimpleLayout())
+    : layout(new SimpleLayout)
     , name()
     , threshold(NOT_SET_LOG_LEVEL)
     , errorHandler(new OnlyOnceErrorHandler)
     , useLockFile(false)
+    , async(false)
+#if ! defined (LOG4CPLUS_SINGLE_THREADED)
+    , in_flight(0)
+#endif
     , closed(false)
 {
     if(properties.exists( LOG4CPLUS_TEXT("layout") ))
@@ -110,32 +118,30 @@ Appender::Appender(const log4cplus::helpers::Properties & properties)
             = properties.getProperty( LOG4CPLUS_TEXT("layout") );
         spi::LayoutFactory* factory
             = spi::getLayoutFactoryRegistry().get(factoryName);
-        if(factory == 0) {
+        if (factory == nullptr) {
             helpers::getLogLog().error(
                 LOG4CPLUS_TEXT("Cannot find LayoutFactory: \"")
                 + factoryName
-                + LOG4CPLUS_TEXT("\"") );
-            return;
+                + LOG4CPLUS_TEXT("\""), true);
         }
 
         helpers::Properties layoutProperties =
                 properties.getPropertySubset( LOG4CPLUS_TEXT("layout.") );
         try {
-            std::auto_ptr<Layout> newLayout(factory->createObject(layoutProperties));
-            if(newLayout.get() == 0) {
+            std::unique_ptr<Layout> newLayout(factory->createObject(layoutProperties));
+            if (newLayout == nullptr) {
                 helpers::getLogLog().error(
-                    LOG4CPLUS_TEXT("Failed to create appender: ")
-                    + factoryName);
+                    LOG4CPLUS_TEXT("Failed to create Layout: ")
+                    + factoryName, true);
             }
             else {
-                layout = newLayout;
+                layout = std::move(newLayout);
             }
         }
         catch(std::exception const & e) {
-            helpers::getLogLog().error( 
+            helpers::getLogLog().error(
                 LOG4CPLUS_TEXT("Error while creating Layout: ")
-                + LOG4CPLUS_C_STR_TO_TSTRING(e.what()));
-            return;
+                + LOG4CPLUS_C_STR_TO_TSTRING(e.what()), true);
         }
 
     }
@@ -151,7 +157,6 @@ Appender::Appender(const log4cplus::helpers::Properties & properties)
     helpers::Properties filterProps
         = properties.getPropertySubset( LOG4CPLUS_TEXT("filters.") );
     unsigned filterCount = 0;
-    spi::FilterPtr filterChain;
     tstring filterName;
     while (filterProps.exists(
         filterName = helpers::convertIntegerToString (++filterCount)))
@@ -162,24 +167,22 @@ Appender::Appender(const log4cplus::helpers::Properties & properties)
 
         if(! factory)
         {
-            tstring err = LOG4CPLUS_TEXT("Appender::ctor()- Cannot find FilterFactory: ");
-            helpers::getLogLog().error(err + factoryName);
-            continue;
+            helpers::getLogLog().error(
+                LOG4CPLUS_TEXT("Appender::ctor()- Cannot find FilterFactory: ")
+                + factoryName, true);
         }
         spi::FilterPtr tmpFilter = factory->createObject (
             filterProps.getPropertySubset(filterName + LOG4CPLUS_TEXT(".")));
         if (! tmpFilter)
         {
-            tstring err = LOG4CPLUS_TEXT("Appender::ctor()- Failed to create filter: ");
-            helpers::getLogLog().error(err + filterName);
+            helpers::getLogLog().error(
+                LOG4CPLUS_TEXT("Appender::ctor()- Failed to create filter: ")
+                + filterName, true);
         }
-        if (! filterChain)
-            filterChain = tmpFilter;
-        else
-            filterChain->appendFilter(tmpFilter);
+        addFilter (std::move (tmpFilter));
     }
-    setFilter(filterChain);
 
+    // Deal with file locking settings.
     properties.getBool (useLockFile, LOG4CPLUS_TEXT("UseLockFile"));
     if (useLockFile)
     {
@@ -203,6 +206,9 @@ Appender::Appender(const log4cplus::helpers::Properties & properties)
                     "UseLockFile is true but LockFile is not specified"));
         }
     }
+
+    // Deal with asynchronous append flag.
+    properties.getBool (async, LOG4CPLUS_TEXT("AsyncAppend"));
 }
 
 
@@ -225,6 +231,22 @@ Appender::~Appender()
 ///////////////////////////////////////////////////////////////////////////////
 
 void
+Appender::waitToFinishAsyncLogging()
+{
+#if ! defined (LOG4CPLUS_SINGLE_THREADED)
+    if (async)
+    {
+        // When async flag is true we might have some logging still in flight
+        // on thread pool threads. Wait for them to finish.
+
+        std::unique_lock<std::mutex> lock (in_flight_mutex);
+        in_flight_condition.wait (lock,
+            [&] { return this->in_flight == 0; });
+    }
+#endif
+}
+
+void
 Appender::destructorImpl()
 {
     // An appender might be closed then destroyed. There is no point
@@ -232,6 +254,8 @@ Appender::destructorImpl()
     // files get rolled more than once.
     if (closed)
         return;
+
+    waitToFinishAsyncLogging ();
 
     close();
     closed = true;
@@ -244,8 +268,82 @@ bool Appender::isClosed() const
 }
 
 
+#if ! defined (LOG4CPLUS_SINGLE_THREADED)
+void
+Appender::subtract_in_flight ()
+{
+    std::size_t const prev = std::atomic_fetch_sub_explicit (&in_flight,
+        std::size_t (1), std::memory_order_acq_rel);
+    if (prev == 1)
+    {
+        std::unique_lock<std::mutex> lock (in_flight_mutex);
+        in_flight_condition.notify_all ();
+    }
+}
+
+#endif
+
+
+// from global-init.cxx
+void enqueueAsyncDoAppend (SharedAppenderPtr const & appender,
+    spi::InternalLoggingEvent const & event);
+
+
 void
 Appender::doAppend(const log4cplus::spi::InternalLoggingEvent& event)
+{
+#if ! defined (LOG4CPLUS_SINGLE_THREADED)
+    if (async)
+    {
+        event.gatherThreadSpecificData ();
+
+        std::atomic_fetch_add_explicit (&in_flight, std::size_t (1),
+            std::memory_order_relaxed);
+
+        try
+        {
+            enqueueAsyncDoAppend (SharedAppenderPtr (this), event);
+        }
+        catch (...)
+        {
+            subtract_in_flight ();
+            throw;
+        }
+    }
+    else
+#endif
+        syncDoAppend (event);
+}
+
+
+void
+Appender::asyncDoAppend(const log4cplus::spi::InternalLoggingEvent& event)
+{
+#if ! defined (LOG4CPLUS_SINGLE_THREADED)
+    struct handle_in_flight
+    {
+        Appender * const app;
+
+        explicit
+        handle_in_flight (Appender * app_)
+            : app (app_)
+        { }
+
+        ~handle_in_flight ()
+        {
+            app->subtract_in_flight ();
+        }
+    };
+
+    handle_in_flight guard (this);
+#endif
+
+    syncDoAppend (event);
+}
+
+
+void
+Appender::syncDoAppend(const log4cplus::spi::InternalLoggingEvent& event)
 {
     thread::MutexGuard guard (access_mutex);
 
@@ -294,7 +392,7 @@ Appender::formatEvent (const spi::InternalLoggingEvent& event) const
     internal::appender_sratch_pad & appender_sp = internal::get_appender_sp ();
     detail::clear_tostringstream (appender_sp.oss);
     layout->formatAndAppend(appender_sp.oss, event);
-    appender_sp.oss.str().swap (appender_sp.str);
+    appender_sp.str = appender_sp.oss.str();
     return appender_sp.str;
 }
 
@@ -323,7 +421,7 @@ Appender::getErrorHandler()
 
 
 void
-Appender::setErrorHandler(std::auto_ptr<ErrorHandler> eh)
+Appender::setErrorHandler(std::unique_ptr<ErrorHandler> eh)
 {
     if (! eh.get())
     {
@@ -336,17 +434,17 @@ Appender::setErrorHandler(std::auto_ptr<ErrorHandler> eh)
 
     thread::MutexGuard guard (access_mutex);
 
-    this->errorHandler = eh;
+    this->errorHandler = std::move(eh);
 }
 
 
 
 void
-Appender::setLayout(std::auto_ptr<Layout> lo)
+Appender::setLayout(std::unique_ptr<Layout> lo)
 {
     thread::MutexGuard guard (access_mutex);
 
-    this->layout = lo;
+    this->layout = std::move(lo);
 }
 
 
@@ -354,7 +452,51 @@ Appender::setLayout(std::auto_ptr<Layout> lo)
 Layout*
 Appender::getLayout()
 {
+    thread::MutexGuard guard (access_mutex);
+
     return layout.get();
+}
+
+
+void
+Appender::setFilter(log4cplus::spi::FilterPtr f)
+{
+    thread::MutexGuard guard (access_mutex);
+
+    filter = std::move (f);
+}
+
+
+log4cplus::spi::FilterPtr
+Appender::getFilter() const
+{
+    thread::MutexGuard guard (access_mutex);
+
+    return filter;
+}
+
+
+void
+Appender::addFilter (log4cplus::spi::FilterPtr f)
+{
+    thread::MutexGuard guard (access_mutex);
+
+    log4cplus::spi::FilterPtr filterChain = getFilter ();
+    if (filterChain)
+        filterChain->appendFilter (std::move (f));
+    else
+        filterChain = std::move (f);
+
+    setFilter (filterChain);
+}
+
+
+void
+Appender::addFilter (std::function<
+    spi::FilterResult (const spi::InternalLoggingEvent &)> filterFunction)
+{
+    addFilter (
+        spi::FilterPtr (new spi::FunctionFilter (std::move (filterFunction))));
 }
 
 
